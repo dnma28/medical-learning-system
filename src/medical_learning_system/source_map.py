@@ -35,12 +35,25 @@ class SourceMapNode(BaseModel):
 
     @model_validator(mode="after")
     def validate_page_range(self) -> "SourceMapNode":
+        if self.page_end is not None and self.page_start is None:
+            raise ValueError("page_end requires page_start")
         if (
             self.page_start is not None
             and self.page_end is not None
             and self.page_end < self.page_start
         ):
             raise ValueError("page_end must be >= page_start")
+
+        has_physical_locator = (
+            self.page_start is not None
+            or self.page_end is not None
+            or bool(self.source_anchor)
+        )
+        if has_physical_locator and self.source_id is None:
+            raise ValueError(
+                "physical Source Map locators require source_id provenance"
+            )
+
         if (
             self.learning_value == LearningValue.CURRENT_CLINICAL_CHECK
             and not self.freshness_required
