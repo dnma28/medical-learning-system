@@ -23,7 +23,6 @@ jobs:
     env:
       MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      SUPABASE_POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
 
     steps:
       - name: Checkout
@@ -34,7 +33,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Build masked Session pooler URL
+      - name: Build masked direct database URL
         shell: bash
         run: |
           set -euo pipefail
@@ -44,10 +43,6 @@ jobs:
           }
           test -n "$SUPABASE_DB_PASSWORD" || {
             echo "SUPABASE_DB_PASSWORD is missing"
-            exit 1
-          }
-          test -n "$SUPABASE_POOLER_HOST" || {
-            echo "SUPABASE_POOLER_HOST repository variable is missing"
             exit 1
           }
 
@@ -67,31 +62,21 @@ jobs:
           if not project_ref or not project_ref.isalnum():
               raise SystemExit("Could not derive a valid project ref.")
 
-          pooler_host = os.environ["SUPABASE_POOLER_HOST"].strip()
-          if (
-              not pooler_host.endswith(".pooler.supabase.com")
-              or "://" in pooler_host
-              or "/" in pooler_host
-              or ":" in pooler_host
-          ):
-              raise SystemExit(
-                  "SUPABASE_POOLER_HOST must contain only the Session pooler host."
-              )
-
           password = quote(
               os.environ["SUPABASE_DB_PASSWORD"],
               safe="",
           )
           db_url = (
-              f"postgresql://postgres.{project_ref}:{password}"
-              f"@{pooler_host}:5432/postgres"
+              f"postgresql://postgres:{password}"
+              f"@db.{project_ref}.supabase.co:5432/postgres"
+              f"?sslmode=require"
           )
 
           print(f"::add-mask::{db_url}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               env.write(f"SUPABASE_DB_URL={db_url}\n")
 
-          print("Session pooler connection prepared without exposing credentials.")
+          print("Direct migration connection prepared without exposing credentials.")
           PY
 
       - name: Verify pinned Supabase CLI
