@@ -88,7 +88,7 @@ class SupabaseRetrievalStore:
             RetrievalHit(
                 evidence_id=row["evidence_id"],
                 source_id=row["source_id"],
-                structure_node_id=row.get("structure_node_id"),
+                structure_node_id=_legacy_structure_node_id(row),
                 structure_node_ids=set(row.get("structure_node_ids") or []),
                 page_index=row["page_index"],
                 content_type=row["content_type"],
@@ -122,7 +122,7 @@ class SupabaseRetrievalStore:
             RetrievalHit(
                 evidence_id=row["evidence_id"],
                 source_id=row["source_id"],
-                structure_node_id=row.get("structure_node_id"),
+                structure_node_id=_legacy_structure_node_id(row),
                 structure_node_ids=set(row.get("structure_node_ids") or []),
                 page_index=row["page_index"],
                 content_type=row["content_type"],
@@ -138,3 +138,12 @@ def _data(response: Any) -> list[dict[str, Any]]:
     if data is None and isinstance(response, dict):
         data = response.get("data")
     return list(data or [])
+
+
+def _legacy_structure_node_id(row: dict[str, Any]) -> str | None:
+    """Keep the legacy scalar only when the alignment is unambiguous."""
+    explicit = row.get("structure_node_id")
+    if explicit:
+        return str(explicit)
+    node_ids = list(dict.fromkeys(row.get("structure_node_ids") or []))
+    return node_ids[0] if len(node_ids) == 1 else None
