@@ -134,6 +134,10 @@ class SourceRegistry:
             self._write(created, fingerprint)
             return UpsertResult(UpsertAction.CREATED, created)
 
+        # Physical source identity is immutable once registered. Metadata and
+        # classification may be refreshed, but the stable source_id is kept.
+        incoming = incoming.model_copy(update={"source_id": existing.source_id})
+
         if existing.metadata_fingerprint() == fingerprint:
             unchanged = incoming.model_copy(
                 update={
