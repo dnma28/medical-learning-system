@@ -263,3 +263,51 @@ def test_evaluation_report_counts_no_hit_queries(tmp_path):
     )
 
     assert report.no_hit_queries == {"keyword-token-overlap": 1}
+
+
+class AsymmetricFakeProvider:
+    name = "asymmetric-fake"
+    dimension = 2
+
+    def __init__(self):
+        self.document_calls = []
+        self.query_calls = []
+
+    def encode_documents(self, texts):
+        self.document_calls.append(list(texts))
+        return [
+            [1.0, 0.0] if "potassium" in text.casefold() else [0.0, 1.0]
+            for text in texts
+        ]
+
+    def encode_query(self, text):
+        self.query_calls.append(text)
+        return [1.0, 0.0]
+
+    def encode(self, texts):
+        raise AssertionError("legacy encode path should not be used")
+
+
+def test_semantic_retriever_uses_asymmetric_provider_paths(tmp_path):
+    membrane = block(0, "potassium membrane resting potential")
+    other = block(1, "smooth muscle calcium")
+    store = EvidenceLinkStore(tmp_path / "pilot.sqlite3")
+    store.replace_source(
+        SOURCE,
+        [
+            link(membrane, "membrane"),
+            link(other, "chapter"),
+        ],
+    )
+    corpus = build_grounded_corpus([membrane, other], store)
+    provider = AsymmetricFakeProvider()
+
+    retriever = SemanticCorpusRetriever(corpus, provider)
+    response = retriever.retrieve("Vì sao kali ảnh hưởng điện thế nghỉ?", 1)
+
+    assert provider.document_calls == [[
+        "potassium membrane resting potential",
+        "smooth muscle calcium",
+    ]]
+    assert provider.query_calls == ["Vì sao kali ảnh hưởng điện thế nghỉ?"]
+    assert response.hits[0].evidence_id == membrane.evidence_id

@@ -1,0 +1,58 @@
+candidates:
+  - candidate_id: bge-m3
+    model_name: BAAI/bge-m3
+    expected_dimension: 1024
+    max_input_tokens: 8192
+    language_scope: multilingual
+    source_url: "https://huggingface.co/BAAI/bge-m3"
+    query_template: "{text}"
+    document_template: "{text}"
+    normalize_embeddings: true
+    trust_remote_code: false
+    role: multilingual-candidate
+    verified_at: 2026-09-23
+    notes: "Dense retrieval candidate; registry entry is not a performance ranking."
+
+  - candidate_id: multilingual-e5-large-instruct
+    model_name: intfloat/multilingual-e5-large-instruct
+    expected_dimension: 1024
+    max_input_tokens: 512
+    language_scope: multilingual
+    source_url: "https://huggingface.co/intfloat/multilingual-e5-large-instruct"
+    query_template: |-
+      Instruct: Given a Vietnamese medical study question, retrieve relevant English medical textbook passages that answer the question
+      Query: {text}
+    document_template: "{text}"
+    normalize_embeddings: true
+    trust_remote_code: false
+    role: cross-lingual-instruct-candidate
+    verified_at: 2026-09-23
+    notes: "Queries use the model's instruction format; documents remain unprefixed."
+
+  - candidate_id: gte-multilingual-base
+    model_name: Alibaba-NLP/gte-multilingual-base
+    expected_dimension: 768
+    max_input_tokens: 8192
+    language_scope: multilingual
+    source_url: "https://huggingface.co/Alibaba-NLP/gte-multilingual-base"
+    query_template: "{text}"
+    document_template: "{text}"
+    normalize_embeddings: true
+    trust_remote_code: true
+    role: multilingual-candidate
+    verified_at: 2026-09-23
+    notes: "Uses trust_remote_code as recommended by the model's SentenceTransformers example."
+
+  - candidate_id: pubmedbert-base-embeddings
+    model_name: NeuML/pubmedbert-base-embeddings
+    expected_dimension: 768
+    max_input_tokens: 512
+    language_scope: english-biomedical
+    source_url: "https://huggingface.co/NeuML/pubmedbert-base-embeddings"
+    query_template: "{text}"
+    document_template: "{text}"
+    normalize_embeddings: true
+    trust_remote_code: false
+    role: biomedical-domain-comparator
+    verified_at: 2026-09-23
+    notes: "English biomedical comparator, not assumed suitable for Vietnamese cross-lingual retrieval."
