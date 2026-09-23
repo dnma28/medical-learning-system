@@ -151,3 +151,29 @@ def test_structure_mrr_treats_multiple_nodes_on_one_hit_as_same_rank():
 
     assert summary.structure_recall_at_k == 1.0
     assert summary.structure_mrr_at_k == 1.0
+
+
+def test_structure_metrics_treat_all_nodes_on_one_hit_as_same_rank():
+    query = BenchmarkQuery(
+        query_id="q-multi",
+        query_text="query",
+        relevant_structure_nodes={"section-a", "section-b"},
+    )
+    run = BenchmarkRunRecord(
+        query_id="q-multi",
+        retriever="test",
+        k=3,
+        latency_ms=1.0,
+        hits=[
+            BenchmarkHit(
+                evidence_id="ev-1",
+                source_id="source-1",
+                structure_node_ids={"section-a", "section-b"},
+                score=1.0,
+            )
+        ],
+    )
+
+    metrics = score_query(query, run)
+    assert metrics.structure_recall_at_k == 1.0
+    assert metrics.structure_mrr_at_k == 1.0
