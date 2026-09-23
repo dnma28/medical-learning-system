@@ -4,18 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "medical-learning-system"
-version = "0.1.0"
+version = "0.2.0"
 description = "Source-grounded medical knowledge graph and adaptive learning system"
 requires-python = ">=3.10"
 dependencies = [
   "pydantic>=2.7",
   "pydantic-settings>=2.2",
   "PyYAML>=6.0",
+  "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
 rag = ["raganything[all]"]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+mls-ingest = "medical_learning_system.cli.ingest:main"
+mls-query = "medical_learning_system.cli.query:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
