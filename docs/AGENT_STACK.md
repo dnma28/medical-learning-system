@@ -8,12 +8,15 @@ This repository keeps application/runtime dependencies separate from coding-agen
 - **Ponytail policy** — repository-wide coding constraints in `AGENTS.md`.
 - **Spec Kit v1.0.10** — spec-driven workflow for bounded changes.
 - **OpenHarness v0.1.9** — optional agent harness for tools, skills, permissions, context, and long-running agent workflows.
+- **Superpowers v6.4.1** — coding-agent methodology for planning, TDD, systematic debugging, verification, and code review.
 
-The medical safety and provenance invariants in `AGENTS.md` remain authoritative. Agent tooling must not bypass them.
+The medical safety and provenance invariants in `AGENTS.md` remain authoritative. Third-party agent tooling must not bypass or weaken them.
 
 ## Why this layout
 
 Spec Kit's `codex` integration installs skills under `.agents/skills/`. OpenHarness discovers project skills from `.agents/skills/`, so both tools can share the same project-local workflow definitions without adding either tool to the medical application's runtime dependencies.
+
+Superpowers is installed as an OpenHarness plugin from a pinned local checkout under `.agent-tools/superpowers/`. That directory is ignored by Git so third-party source is not vendored into this repository.
 
 ## Windows setup
 
@@ -27,8 +30,9 @@ The script pins:
 
 - Spec Kit: `v1.0.10`
 - OpenHarness: `v0.1.9`
+- Superpowers: `v6.4.1`
 
-It installs both as isolated `uv` tools using Python 3.11, then initializes Spec Kit in-place with the Codex integration when `.specify/` does not already exist.
+It installs Spec Kit and OpenHarness as isolated `uv` tools using Python 3.11, initializes Spec Kit in-place with the Codex integration when `.specify/` does not already exist, checks out Superpowers at the pinned tag, and installs it into OpenHarness.
 
 ### Verify
 
@@ -36,6 +40,7 @@ It installs both as isolated `uv` tools using Python 3.11, then initializes Spec
 specify version
 specify integration status
 oh --version
+oh plugin list
 oh --dry-run
 ```
 
@@ -46,6 +51,8 @@ oh setup
 ```
 
 If you want OpenHarness to use your Codex subscription, choose the Codex Subscription provider during setup.
+
+For native Codex App/CLI, Superpowers must still be installed through Codex's plugin UI (`/plugins`). The repository setup cannot modify a separate Codex client installation on your machine.
 
 ## Spec Kit workflow in Codex
 
@@ -60,6 +67,8 @@ $speckit-implement
 $speckit-converge
 ```
 
+Superpowers complements this with TDD, systematic debugging, verification-before-completion, and review workflows. When workflows disagree, repository-specific rules and medical safety/provenance invariants win.
+
 For this repository, the constitution should preserve at least these existing rules:
 
 1. Candidate/Evidence Graph never writes directly to Canonical Medical KG.
@@ -68,6 +77,7 @@ For this repository, the constitution should preserve at least these existing ru
 4. Preserve source identity, edition/year, fingerprint, and page/chapter metadata when available.
 5. Raw copyrighted textbooks remain local and out of Git.
 6. Keep changes minimal and reuse existing code before adding dependencies or abstractions.
+7. Automated evals and LLM judges are quality signals, not medical truth authorities.
 
 ## Existing-project behavior
 
@@ -78,6 +88,16 @@ specify init --here --force --integration codex
 ```
 
 This is the official existing-project initialization pattern. The script only runs that command when `.specify/` is absent so repeated setup does not overwrite an existing Spec Kit configuration.
+
+## Privacy
+
+Superpowers documents an opt-out for its optional visual-companion telemetry:
+
+```powershell
+$env:SUPERPOWERS_DISABLE_TELEMETRY = "true"
+```
+
+For persistent configuration, set the environment variable in your local user environment rather than committing secrets or machine-specific configuration.
 
 ## Updating later
 
