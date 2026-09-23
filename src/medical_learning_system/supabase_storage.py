@@ -37,19 +37,26 @@ _PROCESSED = {
 def build_supabase_client(
     *,
     url: str | None = None,
+    secret_key: str | None = None,
     service_role_key: str | None = None,
 ):
     """Build the backend-only Supabase client lazily.
 
-    The service-role key must never be exposed to a browser, mobile client,
-    repository file, or learning prompt.
+    Prefer the current Supabase secret key (sb_secret_...). The legacy
+    service_role key remains a compatibility fallback. Neither credential may
+    be exposed to a browser, mobile client, repository file, or learning prompt.
     """
     resolved_url = url or os.getenv("MLS_SUPABASE_URL")
-    resolved_key = service_role_key or os.getenv("MLS_SUPABASE_SERVICE_ROLE_KEY")
+    resolved_key = (
+        secret_key
+        or os.getenv("MLS_SUPABASE_SECRET_KEY")
+        or service_role_key
+        or os.getenv("MLS_SUPABASE_SERVICE_ROLE_KEY")
+    )
     if not resolved_url or not resolved_key:
         raise RuntimeError(
-            "Set MLS_SUPABASE_URL and MLS_SUPABASE_SERVICE_ROLE_KEY "
-            "in the backend environment."
+            "Set MLS_SUPABASE_URL and MLS_SUPABASE_SECRET_KEY "
+            "(or legacy MLS_SUPABASE_SERVICE_ROLE_KEY) in the backend environment."
         )
 
     try:
