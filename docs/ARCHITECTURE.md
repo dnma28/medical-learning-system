@@ -1,4 +1,4 @@
-# Architecture v0.9 — Adaptive HỌC90
+# Architecture v0.10 — Adaptive HỌC90 + Logical Sources
 
 ## Responsibility boundaries
 
@@ -95,3 +95,29 @@ Textbook fidelity and present-day clinical validity are separate. Dose, threshol
 ## Security
 
 Supabase and Google Drive backend credentials remain server-side. Raw copyrighted textbook binaries and extracted copyrighted corpora are not committed to Git.
+
+
+## Logical Book Registry and Source Maps
+
+v0.10 introduces an explicit layer between physical files and medical concepts:
+
+```text
+Logical Book
+  ├─ physical Drive file
+  ├─ alternate/split Drive file
+  └─ Source Map
+       └─ Part → Chapter → Section → Subsection
+```
+
+A filename is never sufficient evidence for internal chapter identity. Physical file identity is operational metadata; the logical book identity is stable across renames and split/full representations.
+
+Source Map nodes may point back to a physical `source_id` and page/source anchor. This preserves the traceability chain without forcing the Knowledge Graph to carry book-navigation responsibilities.
+
+Each mapped item has one learning-value class:
+
+- `CORE_MASTERY`
+- `SUPPORTING`
+- `REFERENCE_ONLY`
+- `CURRENT_CLINICAL_CHECK`
+
+`CURRENT_CLINICAL_CHECK` requires a freshness gate. Mapping an item as `REFERENCE_ONLY` does not remove it from source coverage.
