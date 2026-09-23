@@ -83,14 +83,14 @@ as $$
         e.page_index,
         e.content_type,
         e.text,
-        1 - (emb.embedding <=> query_embedding) as similarity
+        1 - (emb.embedding OPERATOR(extensions.<=>) query_embedding) as similarity
     from public.mls_evidence_embeddings emb
     join public.mls_evidence_blocks e
       on e.evidence_id = emb.evidence_id
     where emb.embedding_model = embedding_model_filter
       and emb.embedding_dim = extensions.vector_dims(query_embedding)
       and (source_ids is null or e.source_id = any(source_ids))
-    order by emb.embedding <=> query_embedding
+    order by emb.embedding OPERATOR(extensions.<=>) query_embedding
     limit greatest(match_count, 1);
 $$;
 
