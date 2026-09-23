@@ -21,6 +21,7 @@ pdf-native = ["pypdf>=5.9,<7", "pymupdf>=1.26,<2"]
 supabase = ["supabase>=2.31,<3"]
 google-drive = ["google-api-python-client>=2,<3", "google-auth>=2,<3"]
 embedding-local = ["sentence-transformers>=6.1,<7"]
+eval = ["ragas==0.4.3"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
