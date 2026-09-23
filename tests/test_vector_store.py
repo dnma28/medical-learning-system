@@ -223,3 +223,41 @@ def test_keyword_search_requires_no_embedding():
     assert hits[0].source_id == "guyton"
     assert hits[0].score == 0.72
     assert client.rpc_calls[-1][0] == "mls_keyword_evidence"
+
+
+def test_single_structure_link_preserves_legacy_scalar_field():
+    client = FakeClient()
+    client.rpc_results["mls_keyword_evidence"] = [
+        {
+            "evidence_id": "ev-legacy",
+            "source_id": "costanzo",
+            "structure_node_ids": ["section-a"],
+            "page_index": 4,
+            "content_type": "text",
+            "text": "membrane",
+            "rank": 0.9,
+        }
+    ]
+    store = SupabaseRetrievalStore(client)
+    hit = store.keyword_search("membrane")[0]
+    assert hit.structure_node_id == "section-a"
+    assert hit.structure_node_ids == {"section-a"}
+
+
+def test_ambiguous_structure_links_do_not_collapse_to_legacy_scalar():
+    client = FakeClient()
+    client.rpc_results["mls_keyword_evidence"] = [
+        {
+            "evidence_id": "ev-ambiguous",
+            "source_id": "costanzo",
+            "structure_node_ids": ["section-a", "section-b"],
+            "page_index": 4,
+            "content_type": "text",
+            "text": "membrane",
+            "rank": 0.8,
+        }
+    ]
+    store = SupabaseRetrievalStore(client)
+    hit = store.keyword_search("membrane")[0]
+    assert hit.structure_node_id is None
+    assert hit.structure_node_ids == {"section-a", "section-b"}
