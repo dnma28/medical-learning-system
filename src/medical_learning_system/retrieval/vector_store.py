@@ -25,6 +25,7 @@ class RetrievalHit(BaseModel):
     evidence_id: str
     source_id: str
     structure_node_id: str | None = None
+    structure_node_ids: set[str] = Field(default_factory=set)
     page_index: int = Field(ge=0)
     content_type: str
     text: str | None = None
@@ -88,6 +89,7 @@ class SupabaseRetrievalStore:
                 evidence_id=row["evidence_id"],
                 source_id=row["source_id"],
                 structure_node_id=row.get("structure_node_id"),
+                structure_node_ids=set(row.get("structure_node_ids") or []),
                 page_index=row["page_index"],
                 content_type=row["content_type"],
                 text=row.get("text"),
@@ -121,6 +123,7 @@ class SupabaseRetrievalStore:
                 evidence_id=row["evidence_id"],
                 source_id=row["source_id"],
                 structure_node_id=row.get("structure_node_id"),
+                structure_node_ids=set(row.get("structure_node_ids") or []),
                 page_index=row["page_index"],
                 content_type=row["content_type"],
                 text=row.get("text"),
