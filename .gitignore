@@ -6,9 +6,13 @@ __pycache__/
 .env
 rag_storage/
 output/
+data/local/
 *.pdf
 *.epub
+*.doc
 *.docx
+*.ppt
 *.pptx
+*.xls
 *.xlsx
 .DS_Store
