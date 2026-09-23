@@ -9,6 +9,21 @@ from medical_learning_system.source_map import (
 )
 
 
+def _node(node_id, order_index, *, source_id=None, page_start=None, page_end=None):
+    return SourceMapNode(
+        logical_source_id="book",
+        node_id=node_id,
+        parent_id=None if node_id == "book" else "book",
+        kind=StructureKind.BOOK if node_id == "book" else StructureKind.CHAPTER,
+        title=node_id,
+        depth=0 if node_id == "book" else 1,
+        order_index=order_index,
+        source_id=source_id,
+        page_start=page_start,
+        page_end=page_end,
+    )
+
+
 def test_logical_source_map_accepts_split_physical_sources():
     source_map = LogicalSourceMap(
         logical_source_id="magee-orthopedic-physical-assessment",
@@ -161,3 +176,50 @@ def test_source_map_rejects_missing_parent():
                 ),
             ],
         )
+
+
+def test_completeness_reports_explicit_gaps_without_inference():
+    source_map = LogicalSourceMap(
+        logical_source_id="book",
+        state=SourceMapState.SECTION_ANCHORED,
+        nodes=[
+            _node("book", 0),
+            _node("chapter-1", 1, source_id="part-1", page_start=10, page_end=20),
+            _node("chapter-2", 2),
+            _node("chapter-3", 3, source_id="part-2", page_start=30),
+        ],
+    )
+
+    report = source_map.completeness()
+
+    assert report.structural_nodes == 3
+    assert report.anchored_nodes == 2
+    assert report.unanchored_node_ids == ["chapter-2"]
+    assert report.open_ended_page_node_ids == ["chapter-3"]
+    assert report.ready_for_hoc90 is False
+
+
+def test_completeness_ready_requires_explicit_source_for_every_structural_node():
+    source_map = LogicalSourceMap(
+        logical_source_id="book",
+        state=SourceMapState.SECTION_ANCHORED,
+        nodes=[
+            _node("book", 0),
+            _node("chapter-1", 1, source_id="part-1", page_start=10, page_end=20),
+            _node("chapter-2", 2, source_id="part-2", page_start=1),
+        ],
+    )
+
+    assert source_map.completeness().ready_for_hoc90 is True
+
+
+def test_completeness_book_only_map_is_not_ready():
+    source_map = LogicalSourceMap(
+        logical_source_id="book",
+        state=SourceMapState.TOC_MAPPED,
+        nodes=[_node("book", 0)],
+    )
+
+    report = source_map.completeness()
+    assert report.structural_nodes == 0
+    assert report.ready_for_hoc90 is False
