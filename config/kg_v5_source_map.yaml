@@ -1,0 +1,14 @@
+mappings:
+  - legacy_source_book_id: b04
+    logical_source_id: guyton-hall-physiology
+    verified_from: "KG v5 patch foundation.homeostasis.v1 toc_mapping explicitly names Guyton and Hall"
+    note: "Edition 15 in inspected v5.3 source anchors."
+
+  - legacy_source_book_id: b08
+    logical_source_id: costanzo-physiology
+    verified_from: "KG v5 patch foundation.electrochemical_membrane.v1 source_anchor explicitly names Costanzo's Physiology"
+    note: "Edition 6 in inspected v5.3 source anchor."
+
+# b06 is intentionally absent. The inspected homeostasis anchor contains b06
+# and edition 26 but does not itself provide sufficiently explicit identity.
+# Do not infer the mapping from nearby ordering or filename conventions.
