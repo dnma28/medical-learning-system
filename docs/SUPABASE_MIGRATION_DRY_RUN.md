@@ -2,30 +2,54 @@
 
 This repository keeps database migrations under `supabase/migrations/` as the schema source of truth.
 
-The `Supabase migration dry-run` workflow verifies those migrations against the configured remote project without applying them.
+The `Supabase migration dry-run` workflow verifies those migrations against the configured remote database without applying them.
 
-Required GitHub Actions secrets:
+## Required GitHub configuration
 
-- `MLS_SUPABASE_URL`
-- `SUPABASE_ACCESS_TOKEN`
-- `SUPABASE_DB_PASSWORD`
+Existing repository secrets:
 
-The project reference is resolved in least-privilege order: optional repository variable `SUPABASE_PROJECT_REF`; a standard project/dashboard URL; and only then the Management API. The ref is masked in logs. If the scoped token lacks account-wide Projects Read and the URL cannot identify the project, the workflow asks for the non-secret `SUPABASE_PROJECT_REF` variable instead of broadening token permissions.
+```text
+MLS_SUPABASE_URL
+SUPABASE_DB_PASSWORD
+```
+
+One non-secret repository variable:
+
+```text
+SUPABASE_POOLER_HOST
+```
+
+Copy only the **Session pooler host** from the Supabase **Connect** dialog, for example a host shaped like:
+
+```text
+aws-1-example.pooler.supabase.com
+```
+
+Do not infer the pooler host from a region name. The workflow derives the project ref from the standard Project URL, percent-encodes the database password, constructs the Session pooler URL inside the ephemeral runner, masks the full connection string, and never prints it.
+
+## Why direct database access
+
+The migration workflow does not need to query project settings, API keys, Auth config, Storage config, or other Supabase Management API resources.
+
+Therefore it deliberately avoids:
+
+```bash
+supabase link
+```
+
+and instead uses:
+
+```bash
+supabase migration list --db-url "$SUPABASE_DB_URL"
+supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+```
+
+This avoids widening a scoped Supabase Personal Access Token merely so the CLI can fetch unrelated platform configuration.
 
 ## Reproducibility
 
-The workflow uses Supabase CLI `2.117.0`, pinned to the current stable CLI version verified when this gate was created. The Actions runner creates `supabase/config.toml` only ephemerally when needed.
-
-Before the dry-run it also executes `supabase migration list --linked` so local and remote migration history can be inspected.
+The workflow pins Supabase CLI `2.117.0`.
 
 ## Safety boundary
 
-The workflow may authenticate and inspect remote migration state, but its final command is always:
-
-```bash
-supabase db push --dry-run
-```
-
-It does not run a non-dry-run `db push`, execute arbitrary SQL, ingest source documents, or promote Candidate knowledge into the Canonical Medical KG.
-
-A production schema apply must remain a separate reviewed action after the dry-run output is known.
+The final migration command always includes `--dry-run`. Actual schema deployment remains a separate reviewed action after the dry-run output has been checked.
