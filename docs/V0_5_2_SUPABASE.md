@@ -35,9 +35,11 @@ exist.
 The current project is a single-user backend architecture.
 
 All four tables have Row Level Security enabled, and no anon/authenticated
-policies are created. The backend uses the Supabase service-role key.
+policies are created. The backend should use the current Supabase secret key
+(`sb_secret_...`). The legacy `service_role` key remains a compatibility
+fallback.
 
-**The service-role key must never appear in:**
+**The secret/service-role key must never appear in:**
 
 - Git commits
 - browser/mobile code
@@ -49,6 +51,9 @@ Use only backend environment variables:
 
 ```text
 MLS_SUPABASE_URL
+MLS_SUPABASE_SECRET_KEY
+
+# legacy fallback only
 MLS_SUPABASE_SERVICE_ROLE_KEY
 ```
 
@@ -58,7 +63,9 @@ When a Supabase project is created:
 
 1. Run `supabase/migrations/0001_core_storage.sql` in the project migration
    workflow / SQL editor.
-2. Store the project URL and service-role key only in the backend secret store.
+2. Store the project URL and current secret key only in the backend secret
+   store. Use the legacy service-role key only if the project does not yet have
+   a current secret key.
 3. Install the optional dependency:
    `pip install -e ".[supabase]"`
 4. Construct the client with `build_supabase_client()`.
