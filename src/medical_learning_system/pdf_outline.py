@@ -71,6 +71,8 @@ def structure_from_pdf_outline_entries(
     source_id: str,
     book_title: str,
     entries: list[PdfOutlineEntry],
+    *,
+    page_count: int | None = None,
 ) -> StructureExtractionResult:
     if not entries:
         raise StructureExtractionError("PDF outline is empty")
@@ -85,7 +87,8 @@ def structure_from_pdf_outline_entries(
         )
         for entry in entries
     ]
-    return structure_from_headings(source_id, book_title, headings)
+    result = structure_from_headings(source_id, book_title, headings)
+    return _with_page_ranges(result, page_count)
 
 
 def structure_from_pdf_outline(
@@ -93,8 +96,50 @@ def structure_from_pdf_outline(
     book_title: str,
     path: Path,
 ) -> StructureExtractionResult:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise RuntimeError(
+            "Native PDF outline support is not installed. "
+            "Install with: pip install -e '.[pdf-native]'"
+        ) from exc
+
+    page_count = len(PdfReader(str(path)).pages)
     return structure_from_pdf_outline_entries(
         source_id,
         book_title,
         read_pdf_outline(path),
+        page_count=page_count,
     )
+
+
+
+def _with_page_ranges(
+    result: StructureExtractionResult,
+    page_count: int | None,
+) -> StructureExtractionResult:
+    nodes = result.nodes
+    ranged = []
+    for index, node in enumerate(nodes):
+        if node.page_start is None or node.depth == 0:
+            ranged.append(node)
+            continue
+
+        next_start = None
+        for later in nodes[index + 1 :]:
+            if (
+                later.page_start is not None
+                and later.depth <= node.depth
+            ):
+                next_start = later.page_start
+                break
+
+        page_end = None
+        if next_start is not None:
+            page_end = max(node.page_start, next_start - 1)
+        elif page_count is not None:
+            page_end = max(node.page_start, page_count)
+
+        ranged.append(node.model_copy(update={"page_end": page_end}))
+
+    return result.model_copy(update={"nodes": ranged})

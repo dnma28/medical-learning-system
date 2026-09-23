@@ -63,3 +63,26 @@ def test_duplicate_titles_under_different_parents_are_distinct():
 
     assert len(summaries) == 2
     assert summaries[0].node_id != summaries[1].node_id
+
+
+def test_outline_infers_page_ranges_from_next_same_or_shallower_node():
+    outline = [
+        PdfOutlineEntry(title="1 Chapter A", depth=0, page_index=0),
+        PdfOutlineEntry(title="Section A", depth=1, page_index=1),
+        PdfOutlineEntry(title="Sub A1", depth=2, page_index=2),
+        PdfOutlineEntry(title="Section B", depth=1, page_index=5),
+        PdfOutlineEntry(title="2 Chapter B", depth=0, page_index=10),
+    ]
+    result = structure_from_pdf_outline_entries(
+        SOURCE,
+        "Book",
+        outline,
+        page_count=20,
+    )
+    by_title = {node.title: node for node in result.nodes}
+
+    assert by_title["1 Chapter A"].page_end == 10
+    assert by_title["Section A"].page_end == 5
+    assert by_title["Sub A1"].page_end == 5
+    assert by_title["Section B"].page_end == 10
+    assert by_title["2 Chapter B"].page_end == 20
