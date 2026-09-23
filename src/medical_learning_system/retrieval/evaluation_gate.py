@@ -217,19 +217,17 @@ class SemanticCorpusRetriever:
         self._corpus = list(corpus)
         self._provider = provider
         self.name = f"semantic:{provider.name}"
-        self._vectors = provider.encode([item.text for item in self._corpus])
+        self._vectors = _encode_documents(
+            provider,
+            [item.text for item in self._corpus],
+        )
         if len(self._vectors) != len(self._corpus):
             raise EvaluationGateError(
                 "embedding provider returned a different number of vectors"
             )
 
     def retrieve(self, query: str, k: int) -> RetrievalResponse:
-        query_vectors = self._provider.encode([query])
-        if len(query_vectors) != 1:
-            raise EvaluationGateError(
-                "embedding provider must return exactly one query vector"
-            )
-        query_vector = query_vectors[0]
+        query_vector = _encode_query(self._provider, query)
 
         scored = [
             (_cosine(query_vector, vector), item)
@@ -302,3 +300,29 @@ def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     if left_norm == 0 or right_norm == 0:
         return 0.0
     return dot / (left_norm * right_norm)
+
+
+def _encode_documents(
+    provider: EmbeddingProvider,
+    texts: Sequence[str],
+) -> list[list[float]]:
+    method = getattr(provider, "encode_documents", None)
+    if callable(method):
+        return method(texts)
+    return provider.encode(texts)
+
+
+def _encode_query(
+    provider: EmbeddingProvider,
+    text: str,
+) -> list[float]:
+    method = getattr(provider, "encode_query", None)
+    if callable(method):
+        return method(text)
+
+    values = provider.encode([text])
+    if len(values) != 1:
+        raise EvaluationGateError(
+            "embedding provider must return exactly one query vector"
+        )
+    return values[0]
