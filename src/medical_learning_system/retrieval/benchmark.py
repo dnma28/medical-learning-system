@@ -4,7 +4,8 @@ import json
 import math
 import statistics
 import time
-from collections.abc import Iterable, Protocol
+from collections.abc import Iterable
+from typing import Protocol
 from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
