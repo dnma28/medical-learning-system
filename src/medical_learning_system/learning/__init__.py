@@ -3,11 +3,11 @@ from .router import (
     LearningRequest,
     LearningRoute,
     LearningRouter,
-    LearningValue,
     QualityMode,
     RoutingContext,
     RoutingDecision,
 )
+from ..source_map import LearningValue
 
 __all__ = [
     "AdaptiveAction",
