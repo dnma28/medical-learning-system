@@ -218,6 +218,28 @@ class EvidenceStore:
             ).fetchall()
         return [self._row_to_block(row) for row in rows]
 
+    def list_page_range(
+        self,
+        source_id: str,
+        page_start: int,
+        page_end: int,
+    ) -> list[SourceEvidenceBlock]:
+        """Read evidence in a 1-based inclusive physical PDF page range."""
+        if page_start < 1 or page_end < page_start:
+            raise ValueError("invalid page range")
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM evidence_blocks
+                WHERE source_id = ?
+                  AND page_index BETWEEN ? AND ?
+                ORDER BY block_index
+                """,
+                (source_id, page_start - 1, page_end - 1),
+            ).fetchall()
+        return [self._row_to_block(row) for row in rows]
+
     def list_structure_node(
         self, source_id: str, structure_node_id: str
     ) -> list[SourceEvidenceBlock]:
