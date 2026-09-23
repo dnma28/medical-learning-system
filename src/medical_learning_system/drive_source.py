@@ -120,7 +120,10 @@ class GoogleDriveSourceFetcher:
         )
         path = Path(handle.name)
         try:
-            request = self.service.files().get_media(fileId=file_id)
+            request = self.service.files().get_media(
+                fileId=file_id,
+                supportsAllDrives=True,
+            )
             downloader = self._downloader_factory(handle, request)
             done = False
             while not done:
