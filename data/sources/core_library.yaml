@@ -1,0 +1,83 @@
+# Logical source catalog — bootstrap
+#
+# This file contains stable logical identities only.
+# Google Drive file IDs are operational metadata and are intentionally not
+# committed here.
+
+sources:
+  - logical_source_id: guyton-hall-physiology
+    kind: textbook
+    domain: physiology
+    title: Guyton and Hall Textbook of Medical Physiology
+
+  - logical_source_id: costanzo-physiology
+    kind: textbook
+    domain: physiology
+    title: Costanzo Physiology
+
+  - logical_source_id: ganong-medical-physiology
+    kind: textbook
+    domain: physiology
+    title: Ganong's Review of Medical Physiology
+
+  - logical_source_id: kandel-principles-neural-science
+    kind: textbook
+    domain: neuroscience
+    title: Principles of Neural Science
+
+  - logical_source_id: stryer-biochemistry
+    kind: textbook
+    domain: biochemistry
+    title: Biochemistry
+
+  - logical_source_id: moore-clinically-oriented-anatomy
+    kind: textbook
+    domain: anatomy
+    title: Moore's Clinically Oriented Anatomy
+    edition: "8"
+
+  - logical_source_id: junqueira-basic-histology
+    kind: textbook
+    domain: histology
+    title: Junqueira's Basic Histology
+    edition: "17"
+    publication_year: 2023
+
+  - logical_source_id: robbins-pathologic-basis-disease
+    kind: textbook
+    domain: pathology
+    title: Robbins & Cotran Pathologic Basis of Disease
+
+  - logical_source_id: neumann-kinesiology
+    kind: textbook
+    domain: movement
+    title: Kinesiology of the Musculoskeletal System
+    physical_layout: split_parts
+
+  - logical_source_id: kisner-therapeutic-exercise
+    kind: textbook
+    domain: rehabilitation
+    title: Therapeutic Exercise Foundations and Techniques
+
+  - logical_source_id: osullivan-physical-rehabilitation
+    kind: textbook
+    domain: rehabilitation
+    title: Physical Rehabilitation
+    edition: "7"
+
+  - logical_source_id: bates-physical-examination
+    kind: textbook
+    domain: clinical
+    title: Bates' Guide to Physical Examination and History Taking
+
+  - logical_source_id: magee-orthopedic-physical-assessment
+    kind: textbook
+    domain: clinical-rehabilitation
+    title: Orthopedic Physical Assessment
+    physical_layout: chapter_parts
+
+  - logical_source_id: katzung-basic-clinical-pharmacology
+    kind: textbook
+    domain: pharmacology
+    title: Katzung's Basic & Clinical Pharmacology
+    physical_layout: chapter_parts
