@@ -32,16 +32,26 @@ check sibling callers rather than patching only one visible symptom.
 
 ## Medical Learning System invariants
 
-These rules override code-minimization when safety or provenance requires more structure:
+These rules override code-minimization when safety, provenance, or learner-state integrity requires more structure:
 
 1. RAG/LLM extraction is evidence, not canonical medical truth.
 2. Automatic extraction must never write directly into the Canonical Medical KG.
 3. Candidate/Evidence Graph and Canonical Medical KG remain separate.
-4. Student Model and Error Graph remain separate from medical truth.
+4. Student Model, Error Graph, Skill Tree, HỌC90 sessions, and learning events remain separate from medical truth.
 5. Promoted medical assertions require source provenance and validation.
-6. Preserve source identity, edition/year, file fingerprint, and page/chapter metadata when available.
-7. Do not silently repair or reinterpret imported KG v5 data; report migrations and conflicts.
-8. Raw copyrighted textbooks stay local and out of Git.
+6. Preserve source identity, edition/year, file fingerprint, chapter/section, page, and evidence locator metadata when available.
+7. Raw copyrighted textbooks stay outside Git. Google Drive is the source-material boundary.
+8. GitHub owns executable machine contracts, routing logic, migrations, validation, and tests. Human-readable Drive documents may mirror these rules but must not silently diverge.
+9. Supabase is the primary runtime store for learner/session state. Do not use a Google Doc as the primary database for mastery, errors, checkpoints, or retrieval history.
+10. Source coverage and concept mastery are separate dimensions. Never infer mastery from chapter completion or exposure.
+11. Learning events are append-only evidence. Do not overwrite prior learner responses to make history look cleaner.
+12. Mastery must not increase merely because content was displayed or explained. It requires learner performance evidence.
+13. A learner error may be recorded only after it is observed. Predicted misconceptions belong in lesson planning, not the observed Error Graph.
+14. Large curriculum changes require learner approval. The router may make bounded within-session adaptations only.
+15. Required-prerequisite branches must preserve a return-to-source-spine target and return after repair.
+16. Textbook fidelity and current clinical validity are separate. Time-sensitive clinical claims need an explicit current-validity gate.
+17. Do not silently repair or reinterpret imported KG v5 data; report migrations, merges, superseded artifacts, and conflicts.
+18. Important teaching claims should remain traceable toward source evidence and the physical Drive source.
 
 ## Scope
 
