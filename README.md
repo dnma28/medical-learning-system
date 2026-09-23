@@ -1,6 +1,8 @@
 # Medical Learning System
 
-A source-grounded medical learning architecture with four separated layers:
+Source-grounded medical learning architecture for the Học nền tảng y học project.
+
+## Architecture
 
 1. **Canonical Medical Knowledge Graph** — validated medical knowledge only.
 2. **Candidate/Evidence Graph** — extracted claims from books/RAG before validation.
@@ -11,52 +13,52 @@ A source-grounded medical learning architecture with four separated layers:
 
 RAG/LLM extraction can retrieve and propose knowledge, but it **cannot write directly into the Canonical KG**. Every promoted medical assertion needs source provenance and validation.
 
-## v0.1 includes
+## Current version: v0.2
 
-- Typed graph schema for nodes, edges, evidence, and validation state.
-- Candidate -> canonical structural promotion guard.
-- RAG-Anything adapter boundary.
-- Minimal learning router.
-- Student/Error model separated from canonical medical knowledge.
-- HỌC90 session data model.
-- Tests and a health-check script.
+v0.2 adds an executable first-book RAG path:
 
-## Quick start
+- RAG-Anything integration boundary;
+- MinerU as the default parser;
+- OpenAI-compatible model provider;
+- local source manifests and SHA-256 fingerprints;
+- `mls-ingest` for one local document;
+- `mls-query` for hybrid retrieval;
+- CI unit tests;
+- local books, API keys, parser output, and RAG storage excluded from Git.
 
-```bash
+## Windows quick start
+
+See `docs/V0_2_QUICKSTART.md`.
+
+```bat
+git clone https://github.com/dnma28/medical-learning-system.git
+cd medical-learning-system
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e '.[dev]'
-pytest
-python scripts/doctor.py
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -e ".[dev,rag]"
 ```
 
-Enable RAG-Anything later:
+Then copy `.env.example` to `.env`, add your API key, and run:
 
-```bash
-pip install -e '.[rag]'
+```bat
+python scripts\doctor.py
 ```
 
-The official RAG-Anything package can also be installed with:
+First-book ingestion example:
 
-```bash
-pip install "raganything[all]"
+```bat
+mls-ingest --manifest data/sources/costanzo-physiology-6e.example.yaml --file "C:\MedicalBooks\Costanzo Physiology 6e.pdf"
 ```
 
-## Layout
+Query example:
 
-```text
-src/medical_learning_system/
-├── knowledge_graph/
-├── retrieval/
-├── learning/
-├── student/
-└── hoc90/
-
-data/
-├── canonical/
-├── candidates/
-└── sources/
+```bat
+mls-query "Explain the determinants of resting membrane potential."
 ```
+
+## Important provenance limit
+
+v0.2 can preserve source identity and local file fingerprints, and RAG-Anything's parser carries position metadata such as `page_idx`. Verified page-level evidence export into the Candidate Graph is scheduled for v0.3.
 
 Raw copyrighted textbooks should not be committed to Git.
