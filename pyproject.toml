@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 rag = ["raganything[all]"]
 docling = ["docling>=2.81,<3"]
+markitdown = ["markitdown[docx,pptx,xlsx,xls]==0.1.8"]
 pdf-native = ["pypdf>=5.9,<7", "pymupdf>=1.26,<2"]
 supabase = ["supabase>=2.31,<3"]
 google-drive = ["google-api-python-client>=2,<3", "google-auth>=2,<3"]
