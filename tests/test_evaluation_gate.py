@@ -16,6 +16,7 @@ from medical_learning_system.retrieval.benchmark_gold import (
 )
 from medical_learning_system.retrieval.evaluation_gate import (
     EvaluationGateError,
+    GroundedEvidence,
     KeywordBaselineRetriever,
     SemanticCorpusRetriever,
     alignment_coverage,
@@ -217,3 +218,45 @@ def test_semantic_retriever_is_provider_neutral(tmp_path):
 
     assert response.hits[0].evidence_id == membrane.evidence_id
     assert response.hits[0].structure_node_ids == {"membrane"}
+
+
+def test_keyword_no_overlap_returns_no_hits():
+    corpus = [
+        GroundedEvidence(
+            evidence_id="ev-1",
+            source_id=SOURCE,
+            text="resting membrane potential potassium permeability",
+            structure_node_ids={"membrane"},
+        )
+    ]
+    response = KeywordBaselineRetriever(corpus).retrieve(
+        "nước nội bào ngoại bào",
+        10,
+    )
+    assert response.hits == []
+
+
+def test_evaluation_report_counts_no_hit_queries(tmp_path):
+    membrane = block(0, "potassium membrane resting potential")
+    store = EvidenceLinkStore(tmp_path / "pilot.sqlite3")
+    store.replace_source(SOURCE, [link(membrane, "membrane")])
+    queries = resolve_gold_strict(
+        [gold_item()],
+        logical_source_id=LOGICAL,
+        physical_source_id=SOURCE,
+        nodes=nodes(),
+        link_store=store,
+    )
+    corpus = build_grounded_corpus([membrane], store)
+
+    report, _ = evaluate_retrievers(
+        source_id=SOURCE,
+        logical_source_id=LOGICAL,
+        queries=queries,
+        evidence=[membrane],
+        link_store=store,
+        retrievers=[KeywordBaselineRetriever(corpus)],
+        k=10,
+    )
+
+    assert report.no_hit_queries == {"keyword-token-overlap": 1}
