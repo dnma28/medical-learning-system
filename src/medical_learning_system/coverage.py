@@ -150,7 +150,20 @@ class CoverageStore:
                 "SELECT node_id FROM structure_nodes WHERE source_id = ?",
                 (source_id,),
             ).fetchall()
-            obsolete = [row["node_id"] for row in existing if row["node_id"] not in new_ids]
+            obsolete = [
+                row["node_id"] for row in existing if row["node_id"] not in new_ids
+            ]
+
+            # Temporarily move existing order indexes outside the valid range so
+            # a source refresh can safely reorder retained nodes.
+            connection.execute(
+                """
+                UPDATE structure_nodes
+                SET order_index = -(order_index + 1)
+                WHERE source_id = ?
+                """,
+                (source_id,),
+            )
 
             if obsolete:
                 placeholders = ",".join("?" for _ in obsolete)
