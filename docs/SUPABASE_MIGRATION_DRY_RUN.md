@@ -10,7 +10,13 @@ Required GitHub Actions secrets:
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_DB_PASSWORD`
 
-The project reference is derived from `MLS_SUPABASE_URL`; it is not duplicated in repository configuration.
+The project reference is derived from `MLS_SUPABASE_URL`, masked in workflow logs, and is not duplicated in repository configuration.
+
+## Reproducibility
+
+The workflow uses Supabase CLI `2.117.0`, pinned to the current stable CLI version verified when this gate was created. The Actions runner creates `supabase/config.toml` only ephemerally when needed.
+
+Before the dry-run it also executes `supabase migration list --linked` so local and remote migration history can be inspected.
 
 ## Safety boundary
 
