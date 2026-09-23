@@ -37,7 +37,14 @@ class BenchmarkHit(BaseModel):
     evidence_id: str = Field(min_length=1)
     source_id: str = Field(min_length=1)
     structure_node_id: str | None = None
+    structure_node_ids: set[str] = Field(default_factory=set)
     score: float
+
+    def all_structure_node_ids(self) -> set[str]:
+        values = set(self.structure_node_ids)
+        if self.structure_node_id is not None:
+            values.add(self.structure_node_id)
+        return values
 
 
 class RetrievalResponse(BaseModel):
@@ -122,9 +129,8 @@ def score_query(
 
     evidence_ids = [hit.evidence_id for hit in hits]
     source_ids = [hit.source_id for hit in hits]
-    structure_ids = [
-        hit.structure_node_id for hit in hits if hit.structure_node_id is not None
-    ]
+    structure_sets = [hit.all_structure_node_ids() for hit in hits]
+    structure_ids = set().union(*structure_sets) if structure_sets else set()
 
     evidence_relevant = set(query.relevant_evidence)
     return QueryMetrics(
@@ -141,10 +147,10 @@ def score_query(
         source_recall_at_k=_recall(source_ids, query.relevant_sources),
         source_mrr_at_k=_mrr(source_ids, query.relevant_sources),
         structure_recall_at_k=_recall(
-            structure_ids, query.relevant_structure_nodes
+            list(structure_ids), query.relevant_structure_nodes
         ),
-        structure_mrr_at_k=_mrr(
-            structure_ids, query.relevant_structure_nodes
+        structure_mrr_at_k=_mrr_sets(
+            structure_sets, query.relevant_structure_nodes
         ),
     )
 
@@ -237,6 +243,18 @@ def _mrr(ranked: list[str], relevant: set[str]) -> float | None:
         return None
     for rank, value in enumerate(ranked, start=1):
         if value in relevant:
+            return 1.0 / rank
+    return 0.0
+
+
+def _mrr_sets(
+    ranked: list[set[str]],
+    relevant: set[str],
+) -> float | None:
+    if not relevant:
+        return None
+    for rank, values in enumerate(ranked, start=1):
+        if values & relevant:
             return 1.0 / rank
     return 0.0
 
