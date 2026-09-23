@@ -25,6 +25,7 @@ class SourceMapNode(BaseModel):
     order_index: int = Field(ge=0)
 
     # Optional physical source anchor. A logical book can span many PDFs.
+    # Any physical locator is meaningful only when its exact source_id is known.
     source_id: str | None = None
     page_start: int | None = Field(default=None, ge=1)
     page_end: int | None = Field(default=None, ge=1)
@@ -35,6 +36,15 @@ class SourceMapNode(BaseModel):
 
     @model_validator(mode="after")
     def validate_page_range(self) -> "SourceMapNode":
+        has_physical_locator = (
+            self.page_start is not None
+            or self.page_end is not None
+            or bool(self.source_anchor)
+        )
+        if has_physical_locator and self.source_id is None:
+            raise ValueError("physical Source Map locator requires source_id")
+        if self.page_end is not None and self.page_start is None:
+            raise ValueError("page_end requires page_start")
         if (
             self.page_start is not None
             and self.page_end is not None
