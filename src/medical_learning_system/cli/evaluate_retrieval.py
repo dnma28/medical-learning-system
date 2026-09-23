@@ -9,6 +9,10 @@ from medical_learning_system.evidence_alignment import EvidenceLinkStore
 from medical_learning_system.evidence_store import EvidenceStore
 from medical_learning_system.retrieval.benchmark import write_runs_jsonl
 from medical_learning_system.retrieval.benchmark_gold import load_source_gold_jsonl
+from medical_learning_system.retrieval.embedding_candidates import (
+    build_candidate_provider,
+    load_embedding_candidates,
+)
 from medical_learning_system.retrieval.embedding_providers import (
     SentenceTransformerProvider,
 )
@@ -33,7 +37,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-id", required=True)
     parser.add_argument("--logical-source-id", required=True)
     parser.add_argument("--k", type=int, default=10)
-    parser.add_argument("--semantic-model")
+    semantic = parser.add_mutually_exclusive_group()
+    semantic.add_argument("--semantic-model")
+    semantic.add_argument("--semantic-candidate")
+    parser.add_argument(
+        "--candidate-config",
+        type=Path,
+        default=Path("config/embedding_candidates.yaml"),
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -61,7 +72,12 @@ def main() -> None:
 
     corpus = build_grounded_corpus(evidence, link_store)
     retrievers = [KeywordBaselineRetriever(corpus)]
-    if args.semantic_model:
+    if args.semantic_candidate:
+        registry = load_embedding_candidates(args.candidate_config)
+        candidate = registry.get(args.semantic_candidate)
+        provider = build_candidate_provider(candidate)
+        retrievers.append(SemanticCorpusRetriever(corpus, provider))
+    elif args.semantic_model:
         provider = SentenceTransformerProvider(args.semantic_model)
         retrievers.append(SemanticCorpusRetriever(corpus, provider))
 
