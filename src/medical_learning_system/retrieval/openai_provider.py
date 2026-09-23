@@ -103,3 +103,17 @@ def build_openai_rag(config: RAGConfig):
         vision_model_func=vision_model_func,
         embedding_func=embedding_func,
     )
+
+
+async def build_openai_rag_ready(config: RAGConfig):
+    """Build the engine and load/initialize LightRAG storage.
+
+    This is required when querying in a fresh process instead of querying
+    immediately after document ingestion.
+    """
+    rag = build_openai_rag(config)
+    init_result = await rag._ensure_lightrag_initialized()
+    if not init_result or not init_result.get("success"):
+        error = (init_result or {}).get("error", "unknown initialization error")
+        raise RuntimeError(f"Unable to initialize RAG storage: {error}")
+    return rag
