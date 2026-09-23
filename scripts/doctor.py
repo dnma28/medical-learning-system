@@ -4,8 +4,12 @@ from pathlib import Path
 import shutil
 import sys
 
+from dotenv import load_dotenv
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+
+load_dotenv(dotenv_path=ROOT / ".env", override=False)
 
 from medical_learning_system.config import Settings
 from medical_learning_system.retrieval import RAGAnythingAdapter, RAGConfig
