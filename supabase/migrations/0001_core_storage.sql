@@ -78,10 +78,7 @@ create table if not exists public.mls_evidence_blocks (
     parser text not null,
     parser_version text,
     content_sha256 text not null,
-    unique (source_id, block_index),
-    foreign key (source_id, structure_node_id)
-        references public.mls_structure_nodes(source_id, node_id)
-        on delete set null
+    unique (source_id, block_index)
 );
 
 create index if not exists idx_mls_evidence_source_page
@@ -89,6 +86,11 @@ create index if not exists idx_mls_evidence_source_page
 
 create index if not exists idx_mls_evidence_structure
     on public.mls_evidence_blocks(source_id, structure_node_id);
+
+-- structure_node_id is intentionally not a database foreign key. Source
+-- structure can be replaced or re-aligned across parser/edition changes while
+-- parsed evidence must remain recoverable. The application re-links evidence
+-- when a source is materialized again.
 
 -- Backend-only access for the current single-user architecture.
 -- No anon/authenticated policies are intentionally created.
