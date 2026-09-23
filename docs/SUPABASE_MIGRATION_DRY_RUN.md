@@ -4,15 +4,28 @@ This repository keeps database migrations under `supabase/migrations/` as the sc
 
 The `Supabase migration dry-run` workflow verifies those migrations against the configured remote database without applying them.
 
-## Required GitHub secret
+## Required GitHub configuration
+
+Existing repository secrets:
 
 ```text
-SUPABASE_DB_URL
+MLS_SUPABASE_URL
+SUPABASE_DB_PASSWORD
 ```
 
-Use the **Session pooler** connection string copied from the Supabase **Connect** dialog. It is stored only as a GitHub Actions secret.
+One non-secret repository variable:
 
-The pooler host must be copied from Supabase rather than inferred. The connection string includes the database password, so it must never be committed, pasted into issues, or printed in logs.
+```text
+SUPABASE_POOLER_HOST
+```
+
+Copy only the **Session pooler host** from the Supabase **Connect** dialog, for example a host shaped like:
+
+```text
+aws-1-example.pooler.supabase.com
+```
+
+Do not infer the pooler host from a region name. The workflow derives the project ref from the standard Project URL, percent-encodes the database password, constructs the Session pooler URL inside the ephemeral runner, masks the full connection string, and never prints it.
 
 ## Why direct database access
 
@@ -24,14 +37,14 @@ Therefore it deliberately avoids:
 supabase link
 ```
 
-and instead uses the database-specific CLI path:
+and instead uses:
 
 ```bash
 supabase migration list --db-url "$SUPABASE_DB_URL"
 supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
 ```
 
-This removes the need to broaden a scoped Supabase Personal Access Token merely so the CLI can fetch unrelated platform configuration.
+This avoids widening a scoped Supabase Personal Access Token merely so the CLI can fetch unrelated platform configuration.
 
 ## Reproducibility
 
@@ -39,14 +52,4 @@ The workflow pins Supabase CLI `2.117.0`.
 
 ## Safety boundary
 
-The workflow never runs:
-
-```bash
-supabase db push --db-url "$SUPABASE_DB_URL"
-supabase db reset --db-url "$SUPABASE_DB_URL"
-supabase seed
-```
-
-The final migration command always includes `--dry-run`.
-
-Actual schema deployment remains a separate reviewed action after the dry-run output has been checked.
+The final migration command always includes `--dry-run`. Actual schema deployment remains a separate reviewed action after the dry-run output has been checked.
