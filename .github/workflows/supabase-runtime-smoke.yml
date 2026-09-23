@@ -1,0 +1,71 @@
+name: Supabase runtime smoke
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/supabase-runtime-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+      MLS_SUPABASE_SECRET_KEY: ${{ secrets.MLS_SUPABASE_SECRET_KEY }}
+
+    steps:
+      - name: Validate secret presence
+        shell: bash
+        run: |
+          test -n "$MLS_SUPABASE_URL" || {
+            echo "MLS_SUPABASE_URL is missing"
+            exit 1
+          }
+          test -n "$MLS_SUPABASE_SECRET_KEY" || {
+            echo "MLS_SUPABASE_SECRET_KEY is missing"
+            exit 1
+          }
+
+      - name: Verify authenticated Supabase REST access
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import urllib.error
+          import urllib.request
+
+          base = os.environ["MLS_SUPABASE_URL"].rstrip("/")
+          key = os.environ["MLS_SUPABASE_SECRET_KEY"]
+          request = urllib.request.Request(
+              base + "/rest/v1/",
+              headers={
+                  "apikey": key,
+                  "Authorization": "Bearer " + key,
+                  "Accept": "application/openapi+json",
+              },
+              method="GET",
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if response.status < 200 or response.status >= 300:
+                      raise SystemExit(
+                          f"Supabase REST returned HTTP {response.status}"
+                      )
+          except urllib.error.HTTPError as exc:
+              raise SystemExit(
+                  f"Supabase REST authentication failed with HTTP {exc.code}"
+              ) from None
+          except urllib.error.URLError as exc:
+              raise SystemExit(
+                  "Supabase REST endpoint was not reachable"
+              ) from exc
+
+          print("Supabase runtime credentials authenticated successfully.")
+          PY
