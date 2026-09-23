@@ -36,6 +36,8 @@ class Query:
         self.payload = None
         self.conflict = ""
         self.limit_count = None
+        self.order_field = None
+        self.order_desc = False
 
     def select(self, fields):
         self.mode = "select"
@@ -47,6 +49,11 @@ class Query:
 
     def limit(self, count):
         self.limit_count = count
+        return self
+
+    def order(self, field, desc=False):
+        self.order_field = field
+        self.order_desc = desc
         return self
 
     def delete(self):
@@ -67,6 +74,11 @@ class Query:
         ]
         if self.mode == "select":
             result = [dict(row) for row in matched]
+            if self.order_field:
+                result.sort(
+                    key=lambda row: row[self.order_field],
+                    reverse=self.order_desc,
+                )
             if self.limit_count is not None:
                 result = result[: self.limit_count]
             return Response(result)
