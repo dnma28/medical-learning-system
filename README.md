@@ -57,6 +57,39 @@ Query example:
 mls-query "Explain the determinants of resting membrane potential."
 ```
 
+## Agent tooling
+
+The coding workflow uses Codex + the Ponytail policy in `AGENTS.md`, with pinned Spec Kit, OpenHarness, and Superpowers integrations kept outside the medical application's runtime dependencies.
+
+On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_agent_stack.ps1
+```
+
+Pinned versions:
+
+- Spec Kit `v1.0.10`
+- OpenHarness `v0.1.9`
+- Superpowers `v6.4.1`
+
+See `docs/AGENT_STACK.md` for workflow, precedence rules, and verification steps.
+
+## Evaluation tooling
+
+Ragas and Promptfoo are optional measurement layers for RAG/LLM quality. They cannot validate or promote medical claims into the Canonical KG.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_quality_tools.ps1
+```
+
+Pinned versions:
+
+- Ragas `v0.4.3`
+- Promptfoo `0.123.1`
+
+See `docs/QUALITY_STACK.md` for the evaluation hierarchy and safety boundaries.
+
 ## Important provenance limit
 
 v0.2 can preserve source identity and local file fingerprints, and RAG-Anything's parser carries position metadata such as `page_idx`. Verified page-level evidence export into the Candidate Graph is scheduled for v0.3.
