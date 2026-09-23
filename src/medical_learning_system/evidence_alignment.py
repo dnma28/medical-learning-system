@@ -13,6 +13,7 @@ from .evidence_store import SourceEvidenceBlock
 
 class AlignmentMethod(str, Enum):
     EXACT_HEADING = "exact_heading"
+    HEADING_PREFIX = "heading_prefix"
     HEADING_SEQUENCE = "heading_sequence"
     PAGE_RANGE_CANDIDATE = "page_range_candidate"
 
@@ -49,25 +50,39 @@ def align_evidence_to_structure(
     for blocks in blocks_by_page.values():
         blocks.sort(key=_block_position)
 
-    anchors: dict[str, SourceEvidenceBlock] = {}
+    anchors: dict[str, tuple[SourceEvidenceBlock, AlignmentMethod]] = {}
     unresolved: list[StructureNode] = []
     for node in nodes:
         if node.parent_id is None or node.page_start is None:
             continue
-        matches = [
+        page_blocks = blocks_by_page.get(node.page_start, [])
+        heading = _norm(node.title)
+        exact = [
             block
-            for block in blocks_by_page.get(node.page_start, [])
-            if block.text and _norm(block.text) == _norm(node.title)
+            for block in page_blocks
+            if block.text and _norm(block.text) == heading
         ]
-        if len(matches) == 1:
-            anchors[node.node_id] = matches[0]
+        if len(exact) == 1:
+            anchors[node.node_id] = (exact[0], AlignmentMethod.EXACT_HEADING)
+            continue
+        if len(exact) > 1:
+            unresolved.append(node)
+            continue
+
+        prefix = [
+            block
+            for block in page_blocks
+            if block.text and _norm(block.text).startswith(heading + " ")
+        ]
+        if len(prefix) == 1:
+            anchors[node.node_id] = (prefix[0], AlignmentMethod.HEADING_PREFIX)
         else:
             unresolved.append(node)
 
     anchor_events = sorted(
         (
-            (_document_position(block), by_id[node_id], block)
-            for node_id, block in anchors.items()
+            (_document_position(block), by_id[node_id], block, method)
+            for node_id, (block, method) in anchors.items()
         ),
         key=lambda item: item[0],
     )
@@ -75,27 +90,28 @@ def align_evidence_to_structure(
     links: dict[tuple[str, str], EvidenceStructureLink] = {}
     for block in sorted(evidence, key=_document_position):
         position = _document_position(block)
-        exact_node = next(
+        heading_event = next(
             (
-                node
-                for event_position, node, anchor_block in anchor_events
+                (node, method)
+                for event_position, node, anchor_block, method in anchor_events
                 if anchor_block.evidence_id == block.evidence_id
             ),
             None,
         )
-        if exact_node is not None:
+        if heading_event is not None:
+            exact_node, heading_method = heading_event
             _add_path_links(
                 links,
                 block,
                 exact_node,
                 ancestors,
-                AlignmentMethod.EXACT_HEADING,
-                1.0,
+                heading_method,
+                1.0 if heading_method == AlignmentMethod.EXACT_HEADING else 0.99,
             )
             continue
 
         active_node = None
-        for event_position, node, _ in anchor_events:
+        for event_position, node, _, _ in anchor_events:
             if event_position <= position:
                 active_node = node
             else:
