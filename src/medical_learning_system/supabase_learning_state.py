@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .hoc90.session import Hoc90Session, LearningEvent, SessionStatus
+from .hoc90.blueprint import BlueprintStatus, Hoc90Blueprint
+from .hoc90.session import Hoc90Session, LearningEvent, SessionStatus, SourceSpineRef
 from .student.models import ConceptMastery, LearnerError
 
 
@@ -26,6 +27,7 @@ class SupabaseLearningStateStore:
     EVENTS = "mls_learning_events"
     MASTERY = "mls_concept_mastery"
     ERRORS = "mls_learner_errors"
+    BLUEPRINTS = "mls_hoc90_blueprints"
 
     def __init__(self, client: Any):
         self.client = client
@@ -37,7 +39,12 @@ class SupabaseLearningStateStore:
             "target_outcome": session.target_outcome,
             "status": session.status.value,
             "curriculum_position": session.curriculum_position,
-            "source_spine": session.source_spine,
+            "source_spine": [
+                item.model_dump(mode="json")
+                if isinstance(item, SourceSpineRef)
+                else item
+                for item in session.source_spine
+            ],
             "toc_position": session.toc_position,
             "checkpoint": (
                 session.checkpoint.model_dump(mode="json")
@@ -84,7 +91,14 @@ class SupabaseLearningStateStore:
             "outcome": event.outcome,
             "answer_summary": event.answer_summary,
             "hint_level": event.hint_level,
-            "metadata": event.metadata,
+            "metadata": {
+                **event.metadata,
+                **(
+                    {"source_ref": event.source_ref.model_dump(mode="json")}
+                    if event.source_ref is not None
+                    else {}
+                ),
+            },
             "created_at": _iso(event.created_at),
         }
         # Learning events are append-only: a duplicate event ID is an error,
@@ -182,3 +196,45 @@ class SupabaseLearningStateStore:
             row["statement"] = row.pop("observed_statement")
             errors.append(LearnerError.model_validate(row))
         return errors
+
+
+    def save_blueprint(self, blueprint: Hoc90Blueprint) -> Hoc90Blueprint:
+        if blueprint.status == BlueprintStatus.ACTIVE:
+            (
+                self.client.table(self.BLUEPRINTS)
+                .update({"status": BlueprintStatus.SUPERSEDED.value})
+                .eq("status", BlueprintStatus.ACTIVE.value)
+                .execute()
+            )
+
+        row = {
+            "lesson_id": blueprint.lesson_id,
+            "status": blueprint.status.value,
+            "curriculum_position": blueprint.curriculum_position,
+            "source_spine": [
+                ref.model_dump(mode="json")
+                for ref in blueprint.source_spine
+            ],
+            "payload": blueprint.model_dump(mode="json"),
+            "updated_at": _iso(_utcnow()),
+        }
+        (
+            self.client.table(self.BLUEPRINTS)
+            .upsert(row, on_conflict="lesson_id")
+            .execute()
+        )
+        return blueprint
+
+    def get_active_blueprint(self) -> Hoc90Blueprint | None:
+        response = (
+            self.client.table(self.BLUEPRINTS)
+            .select("*")
+            .eq("status", BlueprintStatus.ACTIVE.value)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = _data(response)
+        if not rows:
+            return None
+        return Hoc90Blueprint.model_validate(rows[0]["payload"])
