@@ -57,6 +57,18 @@ Query example:
 mls-query "Explain the determinants of resting membrane potential."
 ```
 
+## Agent tooling
+
+The coding workflow uses Codex + the Ponytail policy in `AGENTS.md`. Optional project tooling is available for Spec Kit and OpenHarness without adding them to the medical application's runtime dependencies.
+
+On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_agent_stack.ps1
+```
+
+This installs pinned Spec Kit `v1.0.10` and OpenHarness `v0.1.9`, then initializes Spec Kit for the existing repository with the Codex integration. See `docs/AGENT_STACK.md` for workflow and verification steps.
+
 ## Important provenance limit
 
 v0.2 can preserve source identity and local file fingerprints, and RAG-Anything's parser carries position metadata such as `page_idx`. Verified page-level evidence export into the Candidate Graph is scheduled for v0.3.
