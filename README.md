@@ -129,18 +129,20 @@ Optional stacks remain separated from the core runtime:
 
 - `.[rag]` — RAG-Anything path
 - `.[docling]` — Docling parser path
+- `.[markitdown]` — MarkItDown fallback for Office/HTML/EPUB/text documents; PDF remains native/Docling by default
 - `.[pdf-native]` — native PDF text/outline helpers
 - `.[supabase]` — Supabase backend
 - `.[eval]` — Ragas evaluation
 
 ## Agent tooling
 
-Coding uses the repository-level Ponytail policy in `AGENTS.md`. Spec Kit, OpenHarness, Superpowers, Ragas, and Promptfoo remain development/evaluation tooling and cannot override medical provenance or learner-state separation rules.
+Coding uses the repository-level Ponytail policy in `AGENTS.md`. Spec Kit, OpenHarness, Superpowers, Open Code Review, Ragas, and Promptfoo remain development/evaluation tooling and cannot override medical provenance or learner-state separation rules.
 
 See:
 
 - `docs/AGENT_STACK.md`
 - `docs/QUALITY_STACK.md`
+- `docs/THIRD_PARTY_TOOL_EVALUATION.md`
 - `docs/V0_9_ADAPTIVE_RUNTIME.md`
 
 ## Copyright and secrets
