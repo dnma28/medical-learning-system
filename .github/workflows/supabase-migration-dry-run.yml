@@ -17,10 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
-      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
     steps:
       - name: Checkout
@@ -31,151 +28,47 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Validate deployment configuration
+      - name: Validate database connection secret
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$SUPABASE_ACCESS_TOKEN" || {
-            echo "SUPABASE_ACCESS_TOKEN is missing"
-            exit 1
-          }
-          test -n "$SUPABASE_DB_PASSWORD" || {
-            echo "SUPABASE_DB_PASSWORD is missing"
-            exit 1
-          }
-          test -n "$MLS_SUPABASE_URL" || {
-            echo "MLS_SUPABASE_URL is missing"
+          test -n "$SUPABASE_DB_URL" || {
+            echo "SUPABASE_DB_URL is missing"
             exit 1
           }
 
-      - name: Discover project reference safely
-        id: project
-        shell: bash
-        run: |
           python - <<'PY'
-          import json
           import os
-          import re
-          import urllib.error
-          import urllib.request
           from urllib.parse import urlparse
 
-          ref_pattern = re.compile(r"^[a-z0-9]+$")
+          parsed = urlparse(os.environ["SUPABASE_DB_URL"])
+          if parsed.scheme not in {"postgres", "postgresql"}:
+              raise SystemExit(
+                  "SUPABASE_DB_URL must be a Postgres connection string."
+              )
+          if not parsed.hostname:
+              raise SystemExit("SUPABASE_DB_URL has no database host.")
+          if not parsed.username:
+              raise SystemExit("SUPABASE_DB_URL has no database username.")
+          if not parsed.path or parsed.path == "/":
+              raise SystemExit("SUPABASE_DB_URL has no database name.")
 
-          def valid(value):
-              return bool(value and ref_pattern.fullmatch(value))
-
-          explicit = os.environ.get("SUPABASE_PROJECT_REF", "").strip()
-          if explicit:
-              if not valid(explicit):
-                  raise SystemExit(
-                      "SUPABASE_PROJECT_REF repository variable is malformed."
-                  )
-              project_ref = explicit
-          else:
-              parsed = urlparse(os.environ["MLS_SUPABASE_URL"])
-              host = parsed.hostname or ""
-              suffix = ".supabase.co"
-              hints = []
-
-              if host.endswith(suffix):
-                  candidate = host[: -len(suffix)]
-                  if valid(candidate):
-                      hints.append(candidate)
-
-              parts = [part for part in parsed.path.split("/") if part]
-              for index in range(len(parts) - 2):
-                  if parts[index:index + 2] == ["dashboard", "project"]:
-                      candidate = parts[index + 2]
-                      if valid(candidate):
-                          hints.append(candidate)
-
-              hints = list(dict.fromkeys(hints))
-              if len(hints) == 1:
-                  project_ref = hints[0]
-              elif len(hints) > 1:
-                  raise SystemExit(
-                      "MLS_SUPABASE_URL contains multiple project references."
-                  )
-              else:
-                  token = os.environ["SUPABASE_ACCESS_TOKEN"]
-                  request = urllib.request.Request(
-                      "https://api.supabase.com/v1/projects",
-                      headers={
-                          "Authorization": "Bearer " + token,
-                          "Accept": "application/json",
-                      },
-                      method="GET",
-                  )
-                  try:
-                      with urllib.request.urlopen(
-                          request,
-                          timeout=20,
-                      ) as response:
-                          projects = json.load(response)
-                  except urllib.error.HTTPError as exc:
-                      if exc.code == 403:
-                          raise SystemExit(
-                              "Project ref cannot be derived without broader "
-                              "Projects(account-wide) Read permission. Keep the "
-                              "token least-privilege and add the repository "
-                              "variable SUPABASE_PROJECT_REF instead."
-                          ) from None
-                      raise SystemExit(
-                          "Supabase Management API authentication failed "
-                          f"with HTTP {exc.code}"
-                      ) from None
-                  except urllib.error.URLError as exc:
-                      raise SystemExit(
-                          "Supabase Management API was not reachable"
-                      ) from exc
-
-                  accessible = [
-                      str(project.get("ref") or project.get("id") or "").strip()
-                      for project in projects
-                      if isinstance(project, dict)
-                  ]
-                  accessible = [
-                      value for value in dict.fromkeys(accessible)
-                      if valid(value)
-                  ]
-                  if len(accessible) != 1:
-                      raise SystemExit(
-                          "Project target remains ambiguous. Add the repository "
-                          "variable SUPABASE_PROJECT_REF."
-                      )
-                  project_ref = accessible[0]
-
-          print(f"::add-mask::{project_ref}")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"project_ref={project_ref}\n")
+          print("Supabase database connection string shape is valid.")
           PY
 
       - name: Verify pinned Supabase CLI
         shell: bash
         run: npx --yes supabase@2.117.0 --version
 
-      - name: Initialize ephemeral Supabase config
-        shell: bash
-        run: |
-          if [ ! -f supabase/config.toml ]; then
-            npx --yes supabase@2.117.0 init
-          fi
-
-      - name: Link project
-        shell: bash
-        run: |
-          npx --yes supabase@2.117.0 link \
-            --project-ref "${{ steps.project.outputs.project_ref }}" \
-            --password "$SUPABASE_DB_PASSWORD"
-
       - name: Inspect migration history
         shell: bash
-        run: npx --yes supabase@2.117.0 migration list --linked
+        run: |
+          npx --yes supabase@2.117.0 migration list \
+            --db-url "$SUPABASE_DB_URL"
 
       - name: Preview pending migrations only
         shell: bash
         run: |
           npx --yes supabase@2.117.0 db push \
-            --dry-run \
-            --password "$SUPABASE_DB_PASSWORD"
+            --db-url "$SUPABASE_DB_URL" \
+            --dry-run
