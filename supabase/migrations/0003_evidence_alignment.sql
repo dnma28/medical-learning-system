@@ -1,10 +1,11 @@
 -- Medical Learning System v0.6.6
 -- Persist derived evidence-to-structure alignment and expose all links in retrieval.
 
+create unique index if not exists idx_mls_evidence_id_source
+    on public.mls_evidence_blocks(evidence_id, source_id);
+
 create table if not exists public.mls_evidence_structure_links (
-    evidence_id text not null
-        references public.mls_evidence_blocks(evidence_id)
-        on delete cascade,
+    evidence_id text not null,
     source_id text not null,
     node_id text not null,
     method text not null check (
@@ -18,6 +19,9 @@ create table if not exists public.mls_evidence_structure_links (
     confidence double precision not null
         check (confidence >= 0 and confidence <= 1),
     primary key (evidence_id, node_id),
+    foreign key (evidence_id, source_id)
+        references public.mls_evidence_blocks(evidence_id, source_id)
+        on delete cascade,
     foreign key (source_id, node_id)
         references public.mls_structure_nodes(source_id, node_id)
         on delete cascade
