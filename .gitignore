@@ -7,6 +7,8 @@ __pycache__/
 rag_storage/
 output/
 data/local/
+.agent-tools/
+.promptfoo/
 *.pdf
 *.epub
 *.doc
