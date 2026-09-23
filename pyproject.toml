@@ -29,7 +29,7 @@ mls-query = "medical_learning_system.cli.query:main"
 mls-benchmark-score = "medical_learning_system.cli.benchmark_score:main"
 mls-evaluate-retrieval = "medical_learning_system.cli.evaluate_retrieval:main"
 mls-pilot-ingest = "medical_learning_system.cli.pilot_ingest:main"
-mls-compile-source = "medical_learning_system.cli.compile_source:main"
+mls-compile-source = "medical_learning_system.cli.compile_source:main"\nmls-worker-once = "medical_learning_system.cli.worker_once:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
