@@ -150,3 +150,56 @@ def test_link_store_round_trip(tmp_path: Path):
 
     found = store.list_evidence(evidence[1].evidence_id)
     assert {link.node_id for link in found} == {"book", "ch1"}
+
+
+def test_unique_heading_prefix_handles_heading_and_body_in_one_native_block():
+    nodes = [
+        node("book", "Book", 0, 0, None, None),
+        node("ch1", "Chapter One", 1, 1, 1, 3, "book"),
+        node("a", "Section A", 2, 2, 1, 3, "ch1"),
+    ]
+    evidence = [
+        block(0, 1, "Chapter One", 10),
+        block(1, 1, "SECTION A Body text begins in the same native block.", 20),
+        block(2, 1, "continued body", 30),
+    ]
+
+    links = align_evidence_to_structure(nodes, evidence)
+    heading_link = next(
+        link
+        for link in links
+        if link.evidence_id == evidence[1].evidence_id and link.node_id == "a"
+    )
+    body_link = next(
+        link
+        for link in links
+        if link.evidence_id == evidence[2].evidence_id and link.node_id == "a"
+    )
+
+    assert heading_link.method == AlignmentMethod.HEADING_PREFIX
+    assert heading_link.confidence == 0.99
+    assert body_link.method == AlignmentMethod.HEADING_SEQUENCE
+
+
+def test_multiple_prefix_matches_remain_ambiguous():
+    nodes = [
+        node("book", "Book", 0, 0, None, None),
+        node("ch1", "Chapter One", 1, 1, 1, 2, "book"),
+        node("a", "Section A", 2, 2, 1, 2, "ch1"),
+    ]
+    evidence = [
+        block(0, 1, "Chapter One", 10),
+        block(1, 1, "Section A first candidate", 20),
+        block(2, 1, "Section A second candidate", 30),
+        block(3, 2, "later body", 40),
+    ]
+
+    links = align_evidence_to_structure(nodes, evidence)
+    later = [
+        link
+        for link in links
+        if link.evidence_id == evidence[3].evidence_id and link.node_id == "a"
+    ]
+
+    assert later
+    assert all(link.method == AlignmentMethod.PAGE_RANGE_CANDIDATE for link in later)
