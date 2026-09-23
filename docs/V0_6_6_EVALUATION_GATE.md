@@ -49,8 +49,13 @@ confused with incomplete evidence-to-structure alignment.
 ## Keyword baseline
 
 The local keyword retriever is deterministic token overlap and has no API/model
-cost. It is intentionally simple. Its purpose is to establish a minimum
-cross-lingual baseline before semantic embeddings are adopted.
+cost. It returns only positive-overlap evidence. Zero-overlap documents are not
+used as arbitrary tie-break hits, because that would inflate retrieval metrics
+for Vietnamese queries against English source text.
+
+The report records the number of no-hit queries per retriever. This makes the
+cross-lingual failure mode explicit instead of disguising it as low-confidence
+retrieval.
 
 ## Semantic benchmark
 

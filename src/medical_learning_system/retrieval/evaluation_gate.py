@@ -62,6 +62,7 @@ class RetrievalEvaluationReport(BaseModel):
     queries: int
     languages: dict[str, int]
     alignment: AlignmentCoverage
+    no_hit_queries: dict[str, int]
     summaries: list[BenchmarkSummary]
 
 
@@ -179,12 +180,16 @@ class KeywordBaselineRetriever:
                 min(count, document_tokens.get(token, 0))
                 for token, count in query_tokens.items()
             )
+            if overlap <= 0:
+                continue
+
             denominator = math.sqrt(
                 max(sum(query_tokens.values()), 1)
                 * max(sum(document_tokens.values()), 1)
             )
             score = overlap / denominator if denominator else 0.0
-            scored.append((score, item))
+            if score > 0:
+                scored.append((score, item))
 
         scored.sort(key=lambda pair: (-pair[0], pair[1].evidence_id))
         return RetrievalResponse(
@@ -263,9 +268,11 @@ def evaluate_retrievers(
 
     summaries: list[BenchmarkSummary] = []
     runs_by_name: dict[str, list[BenchmarkRunRecord]] = {}
+    no_hit_queries: dict[str, int] = {}
     for retriever in retrievers:
         runs = run_benchmark(queries, retriever, k=k)
         runs_by_name[retriever.name] = runs
+        no_hit_queries[retriever.name] = sum(not run.hits for run in runs)
         summaries.append(summarize_run(queries, runs))
 
     languages = Counter(query.language or "unknown" for query in queries)
@@ -275,6 +282,7 @@ def evaluate_retrievers(
         queries=len(queries),
         languages=dict(sorted(languages.items())),
         alignment=alignment_coverage(evidence, link_store),
+        no_hit_queries=no_hit_queries,
         summaries=summaries,
     )
     return report, runs_by_name
