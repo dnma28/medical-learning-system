@@ -167,6 +167,9 @@ def test_keyword_evaluation_uses_same_resolved_gold(tmp_path):
         nodes=nodes(),
         link_store=store,
     )
+    queries[0] = queries[0].model_copy(
+        update={"query_text": "potassium membrane"}
+    )
     corpus = build_grounded_corpus([membrane, other], store)
 
     report, runs = evaluate_retrievers(
