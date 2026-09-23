@@ -164,6 +164,7 @@ def test_structure_metrics_treat_all_nodes_on_one_hit_as_same_rank():
         retriever="test",
         k=3,
         latency_ms=1.0,
+        estimated_cost_usd=0.0,
         hits=[
             BenchmarkHit(
                 evidence_id="ev-1",
