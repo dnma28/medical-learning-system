@@ -7,6 +7,10 @@ on:
     paths:
       - ".github/workflows/supabase-migration-dry-run.yml"
       - "supabase/migrations/**"
+  pull_request:
+    paths:
+      - ".github/workflows/supabase-migration-dry-run.yml"
+      - "supabase/migrations/**"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +23,7 @@ jobs:
     env:
       MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      SUPABASE_POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
+      SUPABASE_POOLER_HOST: aws-0-ap-south-1.pooler.supabase.com
 
     steps:
       - name: Checkout
@@ -40,10 +44,6 @@ jobs:
           }
           test -n "$SUPABASE_DB_PASSWORD" || {
             echo "SUPABASE_DB_PASSWORD is missing"
-            exit 1
-          }
-          test -n "$SUPABASE_POOLER_HOST" || {
-            echo "SUPABASE_POOLER_HOST repository variable is missing"
             exit 1
           }
 
@@ -70,9 +70,7 @@ jobs:
               or "/" in pooler_host
               or ":" in pooler_host
           ):
-              raise SystemExit(
-                  "SUPABASE_POOLER_HOST must contain only the Session pooler host."
-              )
+              raise SystemExit("Invalid Supabase Session pooler hostname.")
 
           password = quote(
               os.environ["SUPABASE_DB_PASSWORD"],
@@ -81,13 +79,14 @@ jobs:
           db_url = (
               f"postgresql://postgres.{project_ref}:{password}"
               f"@{pooler_host}:5432/postgres"
+              f"?sslmode=require"
           )
 
           print(f"::add-mask::{db_url}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               env.write(f"SUPABASE_DB_URL={db_url}\n")
 
-          print("Session pooler connection prepared without exposing credentials.")
+          print("Session pooler migration connection prepared safely.")
           PY
 
       - name: Verify pinned Supabase CLI
@@ -101,8 +100,16 @@ jobs:
             --db-url "$SUPABASE_DB_URL"
 
       - name: Preview pending migrations only
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           npx --yes supabase@2.117.0 db push \
             --db-url "$SUPABASE_DB_URL" \
             --dry-run
+
+      - name: Apply reviewed migrations on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          npx --yes supabase@2.117.0 db push \
+            --db-url "$SUPABASE_DB_URL"

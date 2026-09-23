@@ -1,97 +1,155 @@
 # Medical Learning System
 
-Source-grounded medical learning architecture for the Học nền tảng y học project.
+Source-grounded, adaptive medical learning backend for the **Học nền tảng y học** project.
+
+## Current version: v0.9
+
+v0.9 aligns the repository with the adaptive HỌC90 architecture:
+
+- **Google Drive** holds original textbooks and human-readable source maps/curriculum.
+- **GitHub** holds machine contracts, retrieval, validation, routing, tests, and migrations.
+- **Supabase** is the primary runtime state store for learner state and HỌC90 sessions.
+- **ChatGPT** is the teaching interface.
+- **Canonical Medical Knowledge** remains separate from Candidate/Evidence data and from learner state.
 
 ## Architecture
 
-1. **Canonical Medical Knowledge Graph** — validated medical knowledge only.
-2. **Candidate/Evidence Graph** — extracted claims from books/RAG before validation.
-3. **Learning layer (HỌC90)** — routes evidence into teaching, recall, and assessment.
-4. **Student/Error Graph** — learner state stays separate from medical truth.
+```text
+Google Drive textbooks
+        |
+        v
+Parser / RAG / evidence alignment
+        |
+        +----------------------+
+        |                      |
+        v                      v
+Candidate/Evidence Graph   Source Maps / coverage
+        |
+   audit / provenance gates
+        |
+        v
+Canonical Medical KG
+        |
+        +----------------------+
+        |                      |
+        v                      v
+Learning Router          Supabase learner runtime
+        |                 - concept mastery M0-M7
+        |                 - learner errors
+        |                 - HỌC90 sessions/checkpoints
+        |                 - learning events
+        |                 - skill-tree state
+        v
+      HỌC90
+        |
+        v
+     ChatGPT
+```
 
-## Core rule
+## Core invariants
 
-RAG/LLM extraction can retrieve and propose knowledge, but it **cannot write directly into the Canonical KG**. Every promoted medical assertion needs source provenance and validation.
+1. Raw textbook PDFs stay out of Git and remain source material in Google Drive.
+2. RAG/LLM extraction is evidence, not canonical medical truth.
+3. Candidate/Evidence data cannot write directly into the Canonical Medical KG.
+4. Promoted medical assertions require source provenance and validation.
+5. Student Model, Error Graph, HỌC90 state, and skill-tree state are not medical truth.
+6. **Source coverage and concept mastery are separate dimensions.**
+7. Learning events are append-only evidence; mastery is not raised merely because content was shown.
+8. Large curriculum changes require learner approval; the router may adapt only bounded within-session paths automatically.
+9. Current/time-sensitive clinical claims require an explicit current-validity gate before being presented as current standard.
+10. Every important answer should remain traceable toward source → passage/figure/table/equation → page/chapter → edition → physical Drive file.
 
-## Current version: v0.2
+## Adaptive HỌC90 runtime
 
-v0.2 adds an executable first-book RAG path:
+The target interaction is:
 
-- RAG-Anything integration boundary;
-- MinerU as the default parser;
-- OpenAI-compatible model provider;
-- local source manifests and SHA-256 fingerprints;
-- `mls-ingest` for one local document;
-- `mls-query` for hybrid retrieval;
-- CI unit tests;
-- local books, API keys, parser output, and RAG storage excluded from Git.
+```text
+HỌC 90: bắt đầu
+```
 
-## Windows quick start
+The runtime resolves the approved curriculum position, resumable session checkpoint, due retrieval, prerequisite gaps, open learner errors, active blueprint, source spine, and required source evidence.
 
-See `docs/V0_2_QUICKSTART.md`.
+If a session is interrupted, the backend can persist a checkpoint so:
 
-```bat
+```text
+HỌC 90: tiếp tục
+```
+
+can resume at the prior concept/question/hint level.
+
+v0.9 stores state incrementally after meaningful learner responses instead of waiting until the end of a 90-minute session.
+
+## Supabase runtime
+
+Migration `0009_adaptive_learning_runtime.sql` adds backend-only tables for:
+
+- HỌC90 sessions and checkpoints;
+- append-only learning events;
+- concept mastery M0-M7;
+- learner error history;
+- source coverage state;
+- skill nodes and learner skill state;
+- active HỌC90 blueprints.
+
+The legacy `mls_coverage` table is not silently repurposed because earlier versions mixed book coverage terminology with learner mastery. v0.9 introduces an explicit source-coverage table while keeping concept mastery separate.
+
+## Retrieval and evidence
+
+The repository already includes:
+
+- Google Drive source materialization;
+- native PDF text and parser adapters;
+- evidence alignment;
+- vector/retrieval evaluation;
+- Candidate Graph materialization;
+- passage-level claim audit;
+- relation-to-claim support and append-only audit ledgers;
+- KG v5 migration tooling.
+
+Multimodal evidence types include text, image, table, and equation records. Further figure-region/caption retrieval hardening remains planned.
+
+## Development
+
+```bash
 git clone https://github.com/dnma28/medical-learning-system.git
 cd medical-learning-system
 python -m venv .venv
+```
+
+Windows:
+
+```bat
 .venv\Scripts\activate
 python -m pip install --upgrade pip
-pip install -e ".[dev,rag]"
+pip install -e ".[dev]"
+pytest
 ```
 
-Then copy `.env.example` to `.env`, add your API key, and run:
+Optional stacks remain separated from the core runtime:
 
-```bat
-python scripts\doctor.py
-```
-
-First-book ingestion example:
-
-```bat
-mls-ingest --manifest data/sources/costanzo-physiology-6e.example.yaml --file "C:\MedicalBooks\Costanzo Physiology 6e.pdf"
-```
-
-Query example:
-
-```bat
-mls-query "Explain the determinants of resting membrane potential."
-```
+- `.[rag]` — RAG-Anything path
+- `.[docling]` — Docling parser path
+- `.[pdf-native]` — native PDF text/outline helpers
+- `.[supabase]` — Supabase backend
+- `.[eval]` — Ragas evaluation
 
 ## Agent tooling
 
-The coding workflow uses Codex + the Ponytail policy in `AGENTS.md`, with pinned Spec Kit, OpenHarness, and Superpowers integrations kept outside the medical application's runtime dependencies.
+Coding uses the repository-level Ponytail policy in `AGENTS.md`. Spec Kit, OpenHarness, Superpowers, Ragas, and Promptfoo remain development/evaluation tooling and cannot override medical provenance or learner-state separation rules.
 
-On Windows:
+See:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_agent_stack.ps1
-```
+- `docs/AGENT_STACK.md`
+- `docs/QUALITY_STACK.md`
+- `docs/V0_9_ADAPTIVE_RUNTIME.md`
 
-Pinned versions:
+## Copyright and secrets
 
-- Spec Kit `v1.0.10`
-- OpenHarness `v0.1.9`
-- Superpowers `v6.4.1`
+Do not commit:
 
-See `docs/AGENT_STACK.md` for workflow, precedence rules, and verification steps.
-
-## Evaluation tooling
-
-Ragas and Promptfoo are optional measurement layers for RAG/LLM quality. They cannot validate or promote medical claims into the Canonical KG.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_quality_tools.ps1
-```
-
-Pinned versions:
-
-- Ragas `v0.4.3`
-- Promptfoo `0.123.1`
-
-See `docs/QUALITY_STACK.md` for the evaluation hierarchy and safety boundaries.
-
-## Important provenance limit
-
-v0.2 can preserve source identity and local file fingerprints, and RAG-Anything's parser carries position metadata such as `page_idx`. Verified page-level evidence export into the Candidate Graph is scheduled for v0.3.
-
-Raw copyrighted textbooks should not be committed to Git.
+- textbook PDFs;
+- parser output containing copyrighted source content;
+- local RAG storage;
+- API keys;
+- Supabase backend credentials;
+- `.env` files.

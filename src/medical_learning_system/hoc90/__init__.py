@@ -1,3 +1,17 @@
-from .session import Hoc90Session, SessionStage
+from .session import (
+    Hoc90Session,
+    LearningEvent,
+    LearningEventType,
+    SessionCheckpoint,
+    SessionStage,
+    SessionStatus,
+)
 
-__all__ = ["Hoc90Session", "SessionStage"]
+__all__ = [
+    "Hoc90Session",
+    "LearningEvent",
+    "LearningEventType",
+    "SessionCheckpoint",
+    "SessionStage",
+    "SessionStatus",
+]

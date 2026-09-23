@@ -1,55 +1,41 @@
-# Supabase migration dry-run
+# Supabase migration gate
 
 This repository keeps database migrations under `supabase/migrations/` as the schema source of truth.
 
-The `Supabase migration dry-run` workflow verifies those migrations against the configured remote database without applying them.
+## Behavior
 
-## Required GitHub configuration
+- On **pull requests** that touch migrations, the workflow connects through the project's Supavisor Session pooler and runs `supabase db push --dry-run`.
+- On **pushes to `main`** that touch migrations, the same workflow first inspects migration history and then runs the reviewed `supabase db push` for real.
+- `workflow_dispatch` remains dry-run only.
 
-Existing repository secrets:
+This keeps production migration history aligned with the committed migration files instead of applying ad-hoc SQL through another path.
+
+## Required GitHub secrets
 
 ```text
 MLS_SUPABASE_URL
 SUPABASE_DB_PASSWORD
 ```
 
-One non-secret repository variable:
+The Session pooler hostname is non-secret and is pinned in the workflow for the current Supabase project region (`ap-south-1`). If the project is recreated in another region, update that hostname as part of the reviewed infrastructure change.
 
-```text
-SUPABASE_POOLER_HOST
-```
+## Why Session pooler
 
-Copy only the **Session pooler host** from the Supabase **Connect** dialog, for example a host shaped like:
+Supabase documents direct database connections as preferable for migrations when IPv6 is available. GitHub-hosted runners in this repository could resolve the direct IPv6 endpoint but could not establish the connection, so the workflow uses the IPv4-capable shared Session pooler on port 5432.
 
-```text
-aws-1-example.pooler.supabase.com
-```
+The generated database URL:
 
-Do not infer the pooler host from a region name. The workflow derives the project ref from the standard Project URL, percent-encodes the database password, constructs the Session pooler URL inside the ephemeral runner, masks the full connection string, and never prints it.
-
-## Why direct database access
-
-The migration workflow does not need to query project settings, API keys, Auth config, Storage config, or other Supabase Management API resources.
-
-Therefore it deliberately avoids:
-
-```bash
-supabase link
-```
-
-and instead uses:
-
-```bash
-supabase migration list --db-url "$SUPABASE_DB_URL"
-supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
-```
-
-This avoids widening a scoped Supabase Personal Access Token merely so the CLI can fetch unrelated platform configuration.
-
-## Reproducibility
-
-The workflow pins Supabase CLI `2.117.0`.
+- derives the project ref from `MLS_SUPABASE_URL`;
+- percent-encodes the database password;
+- uses username `postgres.<project-ref>` for Supavisor;
+- requires SSL;
+- is masked before use;
+- is never printed to logs.
 
 ## Safety boundary
 
-The final migration command always includes `--dry-run`. Actual schema deployment remains a separate reviewed action after the dry-run output has been checked.
+Pull requests cannot apply schema changes. They only preview pending migrations.
+
+Actual schema deployment happens only after the reviewed commit lands on `main`.
+
+After DDL changes, verify the live project through the Supabase connector and run security/performance advisors.
