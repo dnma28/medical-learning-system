@@ -17,7 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
 
     steps:
       - name: Checkout
@@ -28,32 +30,64 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Validate database connection secret
+      - name: Build masked Session pooler URL
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$SUPABASE_DB_URL" || {
-            echo "SUPABASE_DB_URL is missing"
+          test -n "$MLS_SUPABASE_URL" || {
+            echo "MLS_SUPABASE_URL is missing"
+            exit 1
+          }
+          test -n "$SUPABASE_DB_PASSWORD" || {
+            echo "SUPABASE_DB_PASSWORD is missing"
+            exit 1
+          }
+          test -n "$SUPABASE_POOLER_HOST" || {
+            echo "SUPABASE_POOLER_HOST repository variable is missing"
             exit 1
           }
 
           python - <<'PY'
           import os
-          from urllib.parse import urlparse
+          from urllib.parse import quote, urlparse
 
-          parsed = urlparse(os.environ["SUPABASE_DB_URL"])
-          if parsed.scheme not in {"postgres", "postgresql"}:
+          parsed = urlparse(os.environ["MLS_SUPABASE_URL"])
+          host = parsed.hostname or ""
+          suffix = ".supabase.co"
+          if not host.endswith(suffix):
               raise SystemExit(
-                  "SUPABASE_DB_URL must be a Postgres connection string."
+                  "MLS_SUPABASE_URL must be the standard Supabase Project URL."
               )
-          if not parsed.hostname:
-              raise SystemExit("SUPABASE_DB_URL has no database host.")
-          if not parsed.username:
-              raise SystemExit("SUPABASE_DB_URL has no database username.")
-          if not parsed.path or parsed.path == "/":
-              raise SystemExit("SUPABASE_DB_URL has no database name.")
 
-          print("Supabase database connection string shape is valid.")
+          project_ref = host[: -len(suffix)]
+          if not project_ref or not project_ref.isalnum():
+              raise SystemExit("Could not derive a valid project ref.")
+
+          pooler_host = os.environ["SUPABASE_POOLER_HOST"].strip()
+          if (
+              not pooler_host.endswith(".pooler.supabase.com")
+              or "://" in pooler_host
+              or "/" in pooler_host
+              or ":" in pooler_host
+          ):
+              raise SystemExit(
+                  "SUPABASE_POOLER_HOST must contain only the Session pooler host."
+              )
+
+          password = quote(
+              os.environ["SUPABASE_DB_PASSWORD"],
+              safe="",
+          )
+          db_url = (
+              f"postgresql://postgres.{project_ref}:{password}"
+              f"@{pooler_host}:5432/postgres"
+          )
+
+          print(f"::add-mask::{db_url}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"SUPABASE_DB_URL={db_url}\n")
+
+          print("Session pooler connection prepared without exposing credentials.")
           PY
 
       - name: Verify pinned Supabase CLI
