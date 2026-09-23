@@ -131,3 +131,23 @@ def test_graded_relevance_rewards_better_ordering():
 
     assert better.evidence_ndcg_at_k == 1.0
     assert worse.evidence_ndcg_at_k < better.evidence_ndcg_at_k
+
+
+def test_structure_mrr_treats_multiple_nodes_on_one_hit_as_same_rank():
+    q = query(structures=["target-section"])
+    r = run(
+        hits=[
+            BenchmarkHit(
+                evidence_id="ev-a",
+                source_id="src-a",
+                structure_node_ids={"chapter", "target-section", "candidate-other"},
+                score=1.0,
+            ),
+            hit("ev-b", "src-b", "later-section"),
+        ]
+    )
+
+    summary = summarize_run([q], [r])
+
+    assert summary.structure_recall_at_k == 1.0
+    assert summary.structure_mrr_at_k == 1.0
