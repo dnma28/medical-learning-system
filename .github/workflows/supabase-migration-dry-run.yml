@@ -1,0 +1,102 @@
+name: Supabase migration dry-run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/supabase-migration-dry-run.yml"
+      - "supabase/migrations/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN" || {
+            echo "SUPABASE_ACCESS_TOKEN is missing"
+            exit 1
+          }
+          test -n "$SUPABASE_DB_PASSWORD" || {
+            echo "SUPABASE_DB_PASSWORD is missing"
+            exit 1
+          }
+          test -n "$MLS_SUPABASE_URL" || {
+            echo "MLS_SUPABASE_URL is missing"
+            exit 1
+          }
+
+      - name: Derive project reference safely
+        id: project
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          host = urlparse(os.environ["MLS_SUPABASE_URL"]).hostname or ""
+          suffix = ".supabase.co"
+          if not host.endswith(suffix):
+              raise SystemExit(
+                  "MLS_SUPABASE_URL is not a standard Supabase project URL; "
+                  "project ref cannot be derived safely."
+              )
+
+          project_ref = host[: -len(suffix)]
+          if not project_ref or not project_ref.replace("-", "").isalnum():
+              raise SystemExit("Derived Supabase project ref is invalid.")
+
+          print(f"::add-mask::{project_ref}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"project_ref={project_ref}\n")
+          PY
+
+      - name: Verify pinned Supabase CLI
+        shell: bash
+        run: npx --yes supabase@2.117.0 --version
+
+      - name: Initialize ephemeral Supabase config
+        shell: bash
+        run: |
+          if [ ! -f supabase/config.toml ]; then
+            npx --yes supabase@2.117.0 init
+          fi
+
+      - name: Link project
+        shell: bash
+        run: |
+          npx --yes supabase@2.117.0 link \
+            --project-ref "${{ steps.project.outputs.project_ref }}" \
+            --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Inspect migration history
+        shell: bash
+        run: npx --yes supabase@2.117.0 migration list --linked
+
+      - name: Preview pending migrations only
+        shell: bash
+        run: |
+          npx --yes supabase@2.117.0 db push \
+            --dry-run \
+            --password "$SUPABASE_DB_PASSWORD"
