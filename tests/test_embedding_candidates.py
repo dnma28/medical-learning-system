@@ -46,6 +46,7 @@ def test_candidate_template_must_keep_text_placeholder():
             model_name="example/model",
             expected_dimension=8,
             language_scope="test",
+            source_url="https://example.invalid/model",
             query_template="missing placeholder",
             verified_at="2026-09-23",
         )
