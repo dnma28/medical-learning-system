@@ -164,7 +164,7 @@ sources:
     part_pattern: '(?i)^ortho (\d+)\.pdf$'
     notes:
       - Split physical files are one logical book.
-      - Known identity trap: Ortho 6.pdf contains internal Chapter 7 and Ortho 7.pdf contains internal Chapter 6; internal headings override filename inference.
+      - 'Known identity trap: Ortho 6.pdf contains internal Chapter 7 and Ortho 7.pdf contains internal Chapter 6; internal headings override filename inference.'
 
   - logical_source_id: katzung-basic-clinical-pharmacology
     kind: textbook
