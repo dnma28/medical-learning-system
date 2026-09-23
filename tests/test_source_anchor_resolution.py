@@ -41,16 +41,39 @@ def test_verified_source_map_contains_only_explicitly_identified_ids():
     source_map = load_legacy_source_map(MAP)
 
     assert source_map.get("b04").logical_source_id == "guyton-hall-physiology"
+    assert source_map.get("b06").logical_source_id == "ganong-medical-physiology"
     assert source_map.get("b08").logical_source_id == "costanzo-physiology"
-    assert source_map.get("b06") is None
 
 
-def test_unmapped_legacy_source_stays_unmapped():
+def test_b06_resolves_only_to_ganong_26e():
+    ganong = source(
+        source_id="ganong-physical",
+        logical_source_id="ganong-medical-physiology",
+        edition="26",
+        title="Ganong Review of Medical Physiology.pdf",
+    )
     result = resolve_source_anchor(
         {
             "id": "sa-b06-homeostasis",
             "source_book_id": "b06",
             "edition": "26",
+            "verification_state": "GAP",
+        },
+        source_map=load_legacy_source_map(MAP),
+        sources=[ganong],
+    )
+
+    assert result.identity_state == AnchorIdentityState.RESOLVED
+    assert result.logical_source_id == "ganong-medical-physiology"
+    assert result.source_id == "ganong-physical"
+    assert result.anchor_verification_state == "GAP"
+    assert result.evidence_candidates_resolved is False
+
+
+def test_unmapped_legacy_source_stays_unmapped():
+    result = resolve_source_anchor(
+        {
+            "source_book_id": "unknown-legacy-id",
             "verification_state": "GAP",
         },
         source_map=load_legacy_source_map(MAP),
