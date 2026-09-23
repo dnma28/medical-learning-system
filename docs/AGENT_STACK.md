@@ -9,6 +9,7 @@ This repository keeps application/runtime dependencies separate from coding-agen
 - **Spec Kit v1.0.10** — spec-driven workflow for bounded changes.
 - **OpenHarness v0.1.9** — optional agent harness for tools, skills, permissions, context, and long-running agent workflows.
 - **Superpowers v6.4.1** — coding-agent methodology for planning, TDD, systematic debugging, verification, and code review.
+- **Open Code Review v1.12.9** — specialized deterministic + agent review CLI, installed locally under `.agent-tools/open-code-review/`.
 
 The medical safety and provenance invariants in `AGENTS.md` remain authoritative. Third-party agent tooling must not bypass or weaken them.
 
@@ -31,6 +32,7 @@ The script pins:
 - Spec Kit: `v1.0.10`
 - OpenHarness: `v0.1.9`
 - Superpowers: `v6.4.1`
+- Open Code Review: `v1.12.9`
 
 It installs Spec Kit and OpenHarness as isolated `uv` tools using Python 3.11, initializes Spec Kit in-place with the Codex integration when `.specify/` does not already exist, checks out Superpowers at the pinned tag, and installs it into OpenHarness.
 
@@ -67,7 +69,7 @@ $speckit-implement
 $speckit-converge
 ```
 
-Superpowers complements this with TDD, systematic debugging, verification-before-completion, and review workflows. When workflows disagree, repository-specific rules and medical safety/provenance invariants win.
+Superpowers complements this with TDD, systematic debugging, verification-before-completion, and review workflows. Open Code Review adds a dedicated diff/file review engine with deterministic file selection and line positioning. Prefer OCR delegation mode when the host coding agent should perform the reasoning without a separate model credential. When workflows disagree, repository-specific rules and medical safety/provenance invariants win.
 
 For this repository, the constitution should preserve at least these existing rules:
 
@@ -102,3 +104,16 @@ For persistent configuration, set the environment variable in your local user en
 ## Updating later
 
 Do not silently float versions in automation. Review upstream release notes first, then update the pinned versions in `scripts/setup_agent_stack.ps1`.
+
+
+## Open Code Review in Codex
+
+The setup script installs the pinned CLI locally, but Codex plugin registration is user-scoped and remains explicit:
+
+```text
+codex plugin marketplace add alibaba/open-code-review
+```
+
+Then open `/plugins`, install and enable **Open Code Review**, and start a new task. The plugin calls the local OCR CLI. Do not configure a second LLM provider unless standalone OCR-managed review is actually needed.
+
+See `docs/THIRD_PARTY_TOOL_EVALUATION.md` for why the other candidate repositories were not installed.
