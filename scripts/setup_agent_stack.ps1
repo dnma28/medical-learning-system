@@ -1,6 +1,7 @@
 param(
     [switch]$SkipSpecKitInit,
-    [switch]$SkipSuperpowers
+    [switch]$SkipSuperpowers,
+    [switch]$SkipOpenCodeReview
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,6 +64,23 @@ if (-not $SkipSuperpowers) {
     }
 }
 
+if (-not $SkipOpenCodeReview) {
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        $ToolsRoot = Join-Path $RepoRoot ".agent-tools"
+        $OcrDir = Join-Path $ToolsRoot "open-code-review"
+        New-Item -ItemType Directory -Force -Path $OcrDir | Out-Null
+
+        Write-Host "Installing Open Code Review v1.12.9 locally..." -ForegroundColor Cyan
+        npm install --prefix $OcrDir --no-save "@alibaba-group/open-code-review@1.12.9"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Open Code Review installation failed."
+        }
+    }
+    else {
+        Write-Host "npm was not found; Open Code Review installation was skipped." -ForegroundColor Yellow
+    }
+}
+
 # Ensure future shells can resolve uv-managed tool executables.
 uv tool update-shell | Out-Null
 
@@ -70,7 +88,8 @@ Write-Host ""
 Write-Host "Installed:" -ForegroundColor Green
 Write-Host "  Spec Kit:     v1.0.10"
 Write-Host "  OpenHarness:  v0.1.9"
-if (-not $SkipSuperpowers) { Write-Host "  Superpowers:  v6.4.1 (OpenHarness plugin when installation succeeds)" }
+if (-not $SkipSuperpowers) { Write-Host "  Superpowers:       v6.4.1 (OpenHarness plugin when installation succeeds)" }
+if (-not $SkipOpenCodeReview) { Write-Host "  Open Code Review:  v1.12.9 (local tool under .agent-tools/open-code-review)" }
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Open a new PowerShell window so uv's tool PATH is active."
@@ -79,5 +98,7 @@ Write-Host "  3. Run: oh setup"
 Write-Host "  4. Configure the provider you want OpenHarness to use (Codex Subscription is supported)."
 Write-Host "  5. Run: oh --dry-run"
 Write-Host "  6. For native Codex, open /plugins and install Superpowers from the official marketplace if you also want it there."
+Write-Host "  7. For Open Code Review in Codex: run 'codex plugin marketplace add alibaba/open-code-review', then install Open Code Review from /plugins."
+Write-Host "  8. Verify OCR CLI with: .agent-tools\open-code-review\node_modules\.bin\ocr.cmd --version"
 Write-Host ""
 Write-Host "Spec Kit's Codex skills are generated under .agents/skills and are also discoverable by OpenHarness."
