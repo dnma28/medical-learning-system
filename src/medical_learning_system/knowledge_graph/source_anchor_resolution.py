@@ -60,7 +60,7 @@ class SourceAnchorResolution(BaseModel):
     identity_state: AnchorIdentityState
     explicit_pdf_pages: list[int] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
-    canonical_evidence_ready: bool = False
+    evidence_candidates_resolved: bool = False
     notes: list[str] = Field(default_factory=list)
 
 
@@ -177,10 +177,7 @@ def resolve_source_anchor(
     elif not evidence_ids:
         notes.append("explicit pages resolved but no stored evidence block matched")
 
-    ready = (
-        (verification or "").upper() == "PASS"
-        and bool(evidence_ids)
-    )
+    candidate_evidence_resolved = bool(evidence_ids)
     if (verification or "").upper() != "PASS":
         notes.append(
             "anchor verification is not PASS; identity/evidence resolution "
@@ -196,7 +193,7 @@ def resolve_source_anchor(
         identity_state=AnchorIdentityState.RESOLVED,
         explicit_pdf_pages=pages,
         evidence_ids=evidence_ids,
-        canonical_evidence_ready=ready,
+        evidence_candidates_resolved=candidate_evidence_resolved,
         notes=notes,
     )
 
