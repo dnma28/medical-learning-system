@@ -289,3 +289,25 @@ def _percentile(values: list[float], quantile: float) -> float:
     ordered = sorted(values)
     index = max(0, math.ceil(quantile * len(ordered)) - 1)
     return ordered[index]
+
+
+def _set_recall_at_ranks(
+    ranked_sets: list[set[str]],
+    relevant: set[str],
+) -> float | None:
+    if not relevant:
+        return None
+    retrieved = set().union(*ranked_sets) if ranked_sets else set()
+    return len(retrieved & relevant) / len(relevant)
+
+
+def _set_mrr_at_ranks(
+    ranked_sets: list[set[str]],
+    relevant: set[str],
+) -> float | None:
+    if not relevant:
+        return None
+    for rank, values in enumerate(ranked_sets, start=1):
+        if values & relevant:
+            return 1.0 / rank
+    return 0.0
