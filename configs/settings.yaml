@@ -1,0 +1,23 @@
+project:
+  name: medical-learning-system
+  version: 0.1.0
+
+knowledge_graph:
+  canonical_dir: data/canonical
+  candidate_dir: data/candidates
+  require_evidence_for_promotion: true
+  require_source_locator: true
+
+retrieval:
+  engine: rag-anything
+  parser: mineru
+  parse_method: auto
+  multimodal:
+    images: true
+    tables: true
+    equations: true
+
+learning:
+  session_minutes: 90
+  canonical_truth_only_for_assertions: true
+  candidate_evidence_allowed_for_exploration: true
