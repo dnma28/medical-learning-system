@@ -8,6 +8,10 @@ from .hoc90.session import Hoc90Session, LearningEvent, SessionStatus, SourceSpi
 from .student.models import ConceptMastery, LearnerError
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
