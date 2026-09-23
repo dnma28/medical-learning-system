@@ -47,25 +47,80 @@ jobs:
             exit 1
           }
 
-      - name: Derive project reference safely
+      - name: Discover project reference safely
         id: project
         shell: bash
         run: |
           python - <<'PY'
+          import json
           import os
+          import urllib.error
+          import urllib.request
           from urllib.parse import urlparse
 
-          host = urlparse(os.environ["MLS_SUPABASE_URL"]).hostname or ""
-          suffix = ".supabase.co"
-          if not host.endswith(suffix):
+          token = os.environ["SUPABASE_ACCESS_TOKEN"]
+          request = urllib.request.Request(
+              "https://api.supabase.com/v1/projects",
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/json",
+              },
+              method="GET",
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  projects = json.load(response)
+          except urllib.error.HTTPError as exc:
               raise SystemExit(
-                  "MLS_SUPABASE_URL is not a standard Supabase project URL; "
-                  "project ref cannot be derived safely."
+                  f"Supabase Management API authentication failed with HTTP {exc.code}"
+              ) from None
+          except urllib.error.URLError as exc:
+              raise SystemExit(
+                  "Supabase Management API was not reachable"
+              ) from exc
+
+          if not isinstance(projects, list) or not projects:
+              raise SystemExit(
+                  "SUPABASE_ACCESS_TOKEN can access no Supabase projects."
               )
 
-          project_ref = host[: -len(suffix)]
-          if not project_ref or not project_ref.replace("-", "").isalnum():
-              raise SystemExit("Derived Supabase project ref is invalid.")
+          accessible = {
+              str(project.get("id", "")).strip()
+              for project in projects
+              if str(project.get("id", "")).strip()
+          }
+          if not accessible:
+              raise SystemExit(
+                  "Supabase Management API returned no usable project IDs."
+              )
+
+          parsed = urlparse(os.environ["MLS_SUPABASE_URL"])
+          hints = set()
+          host = parsed.hostname or ""
+          suffix = ".supabase.co"
+          if host.endswith(suffix):
+              hints.add(host[: -len(suffix)])
+
+          parts = [part for part in parsed.path.split("/") if part]
+          for index in range(len(parts) - 2):
+              if parts[index:index + 2] == ["dashboard", "project"]:
+                  hints.add(parts[index + 2])
+
+          matches = accessible & hints
+          if len(matches) == 1:
+              project_ref = next(iter(matches))
+          elif len(accessible) == 1:
+              project_ref = next(iter(accessible))
+          elif len(matches) > 1:
+              raise SystemExit(
+                  "MLS_SUPABASE_URL ambiguously matches multiple accessible projects."
+              )
+          else:
+              raise SystemExit(
+                  "Token can access multiple projects and MLS_SUPABASE_URL "
+                  "cannot safely disambiguate the deployment target."
+              )
 
           print(f"::add-mask::{project_ref}")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
