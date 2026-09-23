@@ -15,6 +15,7 @@ class EmbeddingCandidate(BaseModel):
     expected_dimension: int = Field(gt=0)
     max_input_tokens: int | None = Field(default=None, gt=0)
     language_scope: str = Field(min_length=1)
+    source_url: str = Field(min_length=1)
     query_template: str = "{text}"
     document_template: str = "{text}"
     normalize_embeddings: bool = True
@@ -67,7 +68,7 @@ def build_candidate_provider(
     *,
     device: str | None = None,
 ) -> SentenceTransformerProvider:
-    return SentenceTransformerProvider(
+    provider = SentenceTransformerProvider(
         candidate.model_name,
         normalize_embeddings=candidate.normalize_embeddings,
         device=device,
@@ -75,3 +76,12 @@ def build_candidate_provider(
         document_template=candidate.document_template,
         trust_remote_code=candidate.trust_remote_code,
     )
+    if (
+        provider.dimension is not None
+        and provider.dimension != candidate.expected_dimension
+    ):
+        raise ValueError(
+            f"{candidate.candidate_id}: expected dimension "
+            f"{candidate.expected_dimension}, got {provider.dimension}"
+        )
+    return provider
