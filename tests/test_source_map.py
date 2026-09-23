@@ -54,6 +54,73 @@ def test_logical_source_map_accepts_split_physical_sources():
     assert source_map.nodes[2].source_id == "magee-part-6"
 
 
+def test_source_map_rejects_physical_locator_without_source_id():
+    with pytest.raises(ValueError, match="requires source_id"):
+        SourceMapNode(
+            logical_source_id="book",
+            node_id="chapter",
+            parent_id="book",
+            kind=StructureKind.CHAPTER,
+            title="Chapter",
+            depth=1,
+            order_index=1,
+            page_start=12,
+        )
+
+
+@pytest.mark.parametrize(
+    "locator",
+    [
+        {"page_start": 12},
+        {"page_end": 14},
+        {"source_anchor": {"parser_block": 7}},
+    ],
+)
+def test_every_physical_locator_requires_source_id(locator):
+    with pytest.raises(ValueError, match="requires source_id"):
+        SourceMapNode(
+            logical_source_id="book",
+            node_id="section",
+            parent_id="book",
+            kind=StructureKind.SECTION,
+            title="Section",
+            depth=1,
+            order_index=1,
+            **locator,
+        )
+
+
+def test_source_map_rejects_page_end_without_page_start():
+    with pytest.raises(ValueError, match="page_end requires page_start"):
+        SourceMapNode(
+            logical_source_id="book",
+            node_id="section",
+            parent_id="book",
+            source_id="physical-source",
+            kind=StructureKind.SECTION,
+            title="Section",
+            depth=1,
+            order_index=1,
+            page_end=14,
+        )
+
+
+def test_source_map_accepts_unanchored_unknown_location():
+    node = SourceMapNode(
+        logical_source_id="book",
+        node_id="chapter",
+        parent_id="book",
+        kind=StructureKind.CHAPTER,
+        title="Chapter",
+        depth=1,
+        order_index=1,
+    )
+
+    assert node.source_id is None
+    assert node.page_start is None
+    assert node.source_anchor == {}
+
+
 def test_current_clinical_check_requires_freshness_gate():
     with pytest.raises(ValueError, match="freshness"):
         SourceMapNode(

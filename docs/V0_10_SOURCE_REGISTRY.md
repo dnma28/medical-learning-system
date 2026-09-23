@@ -29,6 +29,8 @@ Examples:
 
 `SourceMapNode` maps Part/Chapter/Section/Subsection at the logical-book level while optionally preserving a physical `source_id`, page range, and source anchor.
 
+Physical locators are provenance-bearing data, not hints. If a node stores a page start, page end, or non-empty source anchor, it must also store the exact physical `source_id`. A page end additionally requires a page start. When the physical mapping is not verified, the locator remains unknown; the system must not infer it from filenames, neighboring nodes, or chapter numbering.
+
 Learning-value classes:
 
 - `CORE_MASTERY`
