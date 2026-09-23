@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +20,12 @@ from .evidence_store import EvidenceStore, SourceEvidenceBlock
 from .native_pdf_text import parsed_document_from_native_pdf
 from .parser_contract import materialize_evidence_only
 from .pdf_outline import structure_from_pdf_outline
-from .source_registry import SourceRecord, SourceRegistry, SourceStatus
+from .source_registry import (
+    SourceRecord,
+    SourceRegistry,
+    SourceStatus,
+    UpsertResult,
+)
 from .sources import sha256_file
 
 
@@ -192,6 +198,53 @@ class CompilationManifestStore:
         )
 
 
+class SourceRegistryBackend(Protocol):
+    def upsert(self, incoming: SourceRecord) -> UpsertResult: ...
+
+    def set_status(
+        self,
+        source_id: str,
+        status: SourceStatus,
+        *,
+        content_sha256: str | None = None,
+    ) -> SourceRecord: ...
+
+
+class CoverageBackend(Protocol):
+    def replace_structure(
+        self,
+        source_id: str,
+        nodes: list[StructureNode],
+    ) -> None: ...
+
+
+class EvidenceBackend(Protocol):
+    def replace_source(
+        self,
+        source_id: str,
+        blocks: list[SourceEvidenceBlock],
+    ) -> None: ...
+
+
+class AlignmentBackend(Protocol):
+    def replace_source(
+        self,
+        source_id: str,
+        links: list[EvidenceStructureLink],
+    ) -> None: ...
+
+
+class ManifestBackend(Protocol):
+    def record(self, manifest: CompilationManifest) -> None: ...
+
+    def get_success(
+        self,
+        source_id: str,
+        content_sha256: str,
+        strategy: CompilationStrategy,
+    ) -> CompilationManifest | None: ...
+
+
 StructureLoader = Callable[[SourceRecord, Path], list[StructureNode]]
 EvidenceLoader = Callable[[SourceRecord, Path], list[SourceEvidenceBlock]]
 AlignmentLoader = Callable[
@@ -207,11 +260,11 @@ class IncrementalSourceCompiler:
     def __init__(
         self,
         *,
-        registry: SourceRegistry,
-        coverage: CoverageStore,
-        evidence: EvidenceStore,
-        links: EvidenceLinkStore,
-        manifests: CompilationManifestStore,
+        registry: SourceRegistryBackend,
+        coverage: CoverageBackend,
+        evidence: EvidenceBackend,
+        links: AlignmentBackend,
+        manifests: ManifestBackend,
         structure_loader: StructureLoader,
         evidence_loader: EvidenceLoader,
         alignment_loader: AlignmentLoader = align_evidence_to_structure,
@@ -324,14 +377,14 @@ def build_native_pdf_compiler(path: Path) -> IncrementalSourceCompiler:
         evidence=EvidenceStore(path),
         links=EvidenceLinkStore(path),
         manifests=CompilationManifestStore(path),
-        structure_loader=_native_structure,
-        evidence_loader=_native_evidence,
+        structure_loader=native_pdf_structure_loader,
+        evidence_loader=native_pdf_evidence_loader,
         strategy=CompilationStrategy.NATIVE_PDF,
         needs_multimodal_enrichment=True,
     )
 
 
-def _native_structure(
+def native_pdf_structure_loader(
     source: SourceRecord,
     path: Path,
 ) -> list[StructureNode]:
@@ -342,7 +395,7 @@ def _native_structure(
     ).nodes
 
 
-def _native_evidence(
+def native_pdf_evidence_loader(
     source: SourceRecord,
     path: Path,
 ) -> list[SourceEvidenceBlock]:
