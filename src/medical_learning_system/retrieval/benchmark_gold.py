@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import unicodedata
 from pathlib import Path
 
@@ -142,12 +141,21 @@ def _norm(value: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
-_CHAPTER_PREFIX = re.compile(
-    r"^(?:chapter\\s+)?(?:\\d+|[ivxlcdm]+)\\s*[:.\\-–—]?\\s+",
-    re.IGNORECASE,
-)
-
-
 def _chapter_norm(value: str) -> str:
     normalized = _norm(value)
-    return _CHAPTER_PREFIX.sub("", normalized)
+    tokens = normalized.split()
+    if not tokens:
+        return normalized
+
+    if tokens[0] == "chapter" and len(tokens) >= 2 and _is_chapter_number(tokens[1]):
+        return " ".join(tokens[2:])
+    if _is_chapter_number(tokens[0]):
+        return " ".join(tokens[1:])
+    return normalized
+
+
+def _is_chapter_number(token: str) -> bool:
+    cleaned = token.strip(":.\\-–—")
+    if cleaned.isdigit():
+        return True
+    return bool(cleaned) and all(char in "ivxlcdm" for char in cleaned)
