@@ -59,7 +59,7 @@ mls-query "Explain the determinants of resting membrane potential."
 
 ## Agent tooling
 
-The coding workflow uses Codex + the Ponytail policy in `AGENTS.md`. Optional project tooling is available for Spec Kit and OpenHarness without adding them to the medical application's runtime dependencies.
+The coding workflow uses Codex + the Ponytail policy in `AGENTS.md`, with pinned Spec Kit, OpenHarness, and Superpowers integrations kept outside the medical application's runtime dependencies.
 
 On Windows:
 
@@ -67,7 +67,28 @@ On Windows:
 powershell -ExecutionPolicy Bypass -File scripts/setup_agent_stack.ps1
 ```
 
-This installs pinned Spec Kit `v1.0.10` and OpenHarness `v0.1.9`, then initializes Spec Kit for the existing repository with the Codex integration. See `docs/AGENT_STACK.md` for workflow and verification steps.
+Pinned versions:
+
+- Spec Kit `v1.0.10`
+- OpenHarness `v0.1.9`
+- Superpowers `v6.4.1`
+
+See `docs/AGENT_STACK.md` for workflow, precedence rules, and verification steps.
+
+## Evaluation tooling
+
+Ragas and Promptfoo are optional measurement layers for RAG/LLM quality. They cannot validate or promote medical claims into the Canonical KG.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_quality_tools.ps1
+```
+
+Pinned versions:
+
+- Ragas `v0.4.3`
+- Promptfoo `0.123.1`
+
+See `docs/QUALITY_STACK.md` for the evaluation hierarchy and safety boundaries.
 
 ## Important provenance limit
 
