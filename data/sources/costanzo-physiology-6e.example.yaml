@@ -1,0 +1,10 @@
+source_id: costanzo-physiology-6e
+title: Costanzo Physiology
+authors:
+  - Linda S. Costanzo
+edition: "6"
+publication_year: 2018
+logical_book_id: costanzo-physiology
+notes: >
+  Example manifest for the first v0.2 ingestion test.
+  Keep the actual PDF local; do not commit it to GitHub.
