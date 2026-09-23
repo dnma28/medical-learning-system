@@ -7,6 +7,11 @@ from pathlib import Path
 
 from medical_learning_system.coverage import CoverageStore
 from medical_learning_system.evidence_store import EvidenceStore
+from medical_learning_system.evidence_alignment import (
+    AlignmentMethod,
+    EvidenceLinkStore,
+    align_evidence_to_structure,
+)
 from medical_learning_system.native_pdf_text import (
     native_pdf_page_count,
     parsed_document_from_native_pdf,
@@ -55,6 +60,7 @@ def main() -> None:
     registry = SourceRegistry(args.db)
     coverage = CoverageStore(args.db)
     evidence = EvidenceStore(args.db)
+    links = EvidenceLinkStore(args.db)
 
     source = SourceRecord(
         source_id=args.source_id,
@@ -82,6 +88,8 @@ def main() -> None:
 
     coverage.replace_structure(args.source_id, structure.nodes)
     evidence.replace_source(args.source_id, blocks)
+    aligned = align_evidence_to_structure(structure.nodes, blocks)
+    links.replace_source(args.source_id, aligned)
     registry.set_status(
         args.source_id,
         SourceStatus.PARSED,
@@ -93,6 +101,16 @@ def main() -> None:
         "pdf_pages": native_pdf_page_count(path),
         "structure_nodes": len(structure.nodes),
         "evidence_blocks": len(blocks),
+        "evidence_structure_links": len(aligned),
+        "alignment_exact": sum(
+            link.method == AlignmentMethod.EXACT_HEADING for link in aligned
+        ),
+        "alignment_sequence": sum(
+            link.method == AlignmentMethod.HEADING_SEQUENCE for link in aligned
+        ),
+        "alignment_candidates": sum(
+            link.method == AlignmentMethod.PAGE_RANGE_CANDIDATE for link in aligned
+        ),
         "content_sha256": digest,
     }
 
