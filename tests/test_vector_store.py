@@ -180,7 +180,7 @@ def test_semantic_search_always_names_embedding_model():
         {
             "evidence_id": "ev-1",
             "source_id": "costanzo",
-            "structure_node_id": "section-1",
+            "structure_node_ids": ["chapter-1", "section-1"],
             "page_index": 10,
             "content_type": "text",
             "text": "K permeability",
@@ -196,6 +196,7 @@ def test_semantic_search_always_names_embedding_model():
     )
 
     assert hits[0].score == 0.91
+    assert hits[0].structure_node_ids == {"chapter-1", "section-1"}
     name, params = client.rpc_calls[-1]
     assert name == "mls_match_evidence"
     assert params["embedding_model_filter"] == "model-a"
@@ -208,7 +209,7 @@ def test_keyword_search_requires_no_embedding():
         {
             "evidence_id": "ev-2",
             "source_id": "guyton",
-            "structure_node_id": None,
+            "structure_node_ids": [],
             "page_index": 4,
             "content_type": "text",
             "text": "resting membrane potential",
