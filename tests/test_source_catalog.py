@@ -2,7 +2,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from medical_learning_system.drive_metadata import DriveFileMetadata
-from medical_learning_system.source_catalog import SourceCatalog
+from medical_learning_system.source_catalog import (
+    IdentityStatus,
+    SourceCatalog,
+    SourceMapState,
+)
 from medical_learning_system.source_registry import SourceKind
 
 
@@ -62,3 +66,34 @@ def test_guyton_typo_variant_is_supported():
     catalog = SourceCatalog.load(CATALOG)
     result = catalog.classify(metadata("bản dịch sách GYUTON.pdf"))
     assert result.logical_source_id == "guyton-hall-physiology"
+
+
+def test_core_library_is_the_16_book_registry():
+    catalog = SourceCatalog.load(CATALOG)
+    assert len(catalog.sources) == 16
+
+    moore = catalog.get("moore-clinically-oriented-anatomy")
+    assert moore.identity_status == IdentityStatus.VERIFIED
+    assert moore.source_map_state == SourceMapState.SECTION_ANCHORED
+
+    medical_biochemistry = catalog.get("medical-biochemistry-183")
+    assert medical_biochemistry.identity_status == IdentityStatus.POTENTIAL_DUPLICATE
+
+
+def test_catalog_prefers_exact_drive_file_identity_when_available():
+    catalog = SourceCatalog.model_validate(
+        {
+            "sources": [
+                {
+                    "logical_source_id": "book-a",
+                    "title": "Book A",
+                    "provider_file_ids": ["stable-file-id"],
+                    "match_patterns": ["(?i)different title"],
+                }
+            ]
+        }
+    )
+    result = catalog.classify(
+        metadata("renamed source.pdf", file_id="stable-file-id")
+    )
+    assert result.logical_source_id == "book-a"

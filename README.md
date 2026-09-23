@@ -2,15 +2,17 @@
 
 Source-grounded, adaptive medical learning backend for the **Học nền tảng y học** project.
 
-## Current version: v0.9
+## Current version: v0.10
 
-v0.9 aligns the repository with the adaptive HỌC90 architecture:
+v0.10 adds a canonical machine-readable Book Registry and logical-book Source Map layer on top of the v0.9 adaptive HỌC90 runtime:
 
 - **Google Drive** holds original textbooks and human-readable source maps/curriculum.
 - **GitHub** holds machine contracts, retrieval, validation, routing, tests, and migrations.
 - **Supabase** is the primary runtime state store for learner state and HỌC90 sessions.
 - **ChatGPT** is the teaching interface.
 - **Canonical Medical Knowledge** remains separate from Candidate/Evidence data and from learner state.
+- **Logical Book Registry** separates one book from its one-or-many physical Drive files.
+- **Source Maps** preserve full book/TOC navigation without equating coverage with mastery.
 
 ## Architecture
 
@@ -79,6 +81,8 @@ can resume at the prior concept/question/hint level.
 
 v0.9 stores state incrementally after meaningful learner responses instead of waiting until the end of a 90-minute session.
 
+v0.10 adds `mls_logical_sources` and `mls_source_map_nodes` so split books such as Neumann, Magee, and Katzung can be navigated as one logical source while retaining exact physical-source provenance.
+
 ## Supabase runtime
 
 Migration `0009_adaptive_learning_runtime.sql` adds backend-only tables for:
@@ -144,6 +148,7 @@ See:
 - `docs/QUALITY_STACK.md`
 - `docs/THIRD_PARTY_TOOL_EVALUATION.md`
 - `docs/V0_9_ADAPTIVE_RUNTIME.md`
+- `docs/V0_10_SOURCE_REGISTRY.md`
 
 ## Copyright and secrets
 
