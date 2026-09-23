@@ -30,11 +30,12 @@ Filename similarity is not used to choose between physical sources.
 A source anchor can resolve to the correct PDF and evidence blocks while its
 legacy verification state remains GAP or MISMATCH.
 
-Canonical evidence readiness requires both:
-1. legacy anchor state PASS;
-2. at least one evidence block resolved from an explicit PDF page locator.
+Page resolution produces evidence candidates only. It does not prove that every
+block on that page supports the legacy claim.
 
-Identity resolution never upgrades a legacy verification state.
+Identity resolution never upgrades a legacy verification state, and this layer
+never declares evidence canonical. Claim-level passage linkage remains a later
+promotion prerequisite.
 
 ## Page policy
 
