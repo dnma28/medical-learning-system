@@ -1,5 +1,3 @@
-import pytest
-
 from medical_learning_system.evidence_store import EvidenceContentType
 from medical_learning_system.markitdown_adapter import parsed_document_from_markdown
 
