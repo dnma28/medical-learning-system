@@ -94,3 +94,59 @@ def test_source_map_rejects_missing_parent():
                 ),
             ],
         )
+
+
+@pytest.mark.parametrize(
+    "locator",
+    [
+        {"page_start": 12},
+        {"source_anchor": {"heading": "Chapter 2"}},
+    ],
+)
+def test_source_map_rejects_physical_locator_without_source_id(locator):
+    with pytest.raises(ValueError, match="source_id provenance"):
+        SourceMapNode(
+            logical_source_id="book",
+            node_id="chapter-2",
+            parent_id="book",
+            kind=StructureKind.CHAPTER,
+            title="Chapter 2",
+            depth=1,
+            order_index=1,
+            **locator,
+        )
+
+
+def test_source_map_rejects_page_end_without_page_start():
+    with pytest.raises(ValueError, match="page_end requires page_start"):
+        SourceMapNode(
+            logical_source_id="book",
+            node_id="chapter-2",
+            parent_id="book",
+            source_id="physical-source",
+            kind=StructureKind.CHAPTER,
+            title="Chapter 2",
+            depth=1,
+            order_index=1,
+            page_end=20,
+        )
+
+
+def test_source_map_accepts_complete_physical_locator():
+    node = SourceMapNode(
+        logical_source_id="book",
+        node_id="chapter-2",
+        parent_id="book",
+        source_id="physical-source",
+        kind=StructureKind.CHAPTER,
+        title="Chapter 2",
+        depth=1,
+        order_index=1,
+        page_start=12,
+        page_end=20,
+        source_anchor={"heading": "Chapter 2"},
+    )
+
+    assert node.source_id == "physical-source"
+    assert node.page_start == 12
+    assert node.page_end == 20
