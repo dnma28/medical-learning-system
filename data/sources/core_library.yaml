@@ -1,21 +1,30 @@
-# Logical source catalog — bootstrap
+# Logical source catalog — canonical machine-readable Book Registry
 #
-# Stable logical identities plus cheap filename rules.
-# Google Drive file IDs are operational metadata and are not committed here.
+# This file owns logical book identity and portable filename classification.
+# Google Drive file IDs are runtime operational metadata and are synced to
+# Supabase, not required to be committed here.
 
 sources:
   - logical_source_id: guyton-hall-physiology
     kind: textbook
     domain: physiology
     title: Guyton and Hall Textbook of Medical Physiology
+    role: core physiology source spine
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)(guyton|gyuton)'
+    notes:
+      - Current Drive copy is a Vietnamese translation; edition/year still require source verification.
 
   - logical_source_id: costanzo-physiology
     kind: textbook
     domain: physiology
     title: Costanzo Physiology
     edition: "6"
+    role: concise mechanism clarification and physiology support
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)costanzo'
 
@@ -23,6 +32,9 @@ sources:
     kind: textbook
     domain: physiology
     title: Ganong's Review of Medical Physiology
+    role: physiology review and cross-book comparison
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)ganong'
 
@@ -30,13 +42,21 @@ sources:
     kind: textbook
     domain: neuroscience
     title: Principles of Neural Science
+    role: core neuroscience source
+    identity_status: verify_from_source
+    source_map_state: deep_anchored
     match_patterns:
       - '(?i)principles.*neural.*scien'
+    notes:
+      - Existing deep-extraction checkpoint must be normalized into one book-level Source Map.
 
   - logical_source_id: stryer-biochemistry
     kind: textbook
     domain: biochemistry
     title: Biochemistry
+    role: core biochemistry source
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)(jeremy.*berg|lubert.*stryer|stryer.*biochemistry)'
 
@@ -44,16 +64,26 @@ sources:
     kind: textbook
     domain: biochemistry
     title: Medical Biochemistry (source 183)
+    role: secondary biochemistry source pending identity verification
+    identity_status: potential_duplicate
+    source_map_state: unmapped
     match_patterns:
       - '(?i)(medical_biochemistry_183|^183 \(1\)\.pdf$)'
+    notes:
+      - Two current physical files have equal reported size; byte identity must be checked before deduplication.
 
   - logical_source_id: moore-clinically-oriented-anatomy
     kind: textbook
     domain: anatomy
     title: Moore's Clinically Oriented Anatomy
     edition: "8"
+    role: core gross anatomy source
+    identity_status: verified
+    source_map_state: section_anchored
     match_patterns:
       - '(?i)moore.*clinically oriented anatomy'
+    notes:
+      - Existing Ch1-Ch10 extraction and TOC metadata are retained and require book-level normalization.
 
   - logical_source_id: junqueira-basic-histology
     kind: textbook
@@ -61,6 +91,9 @@ sources:
     title: Junqueira's Basic Histology
     edition: "17"
     publication_year: 2023
+    role: core histology source
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)junqueira'
 
@@ -68,6 +101,9 @@ sources:
     kind: textbook
     domain: pathology
     title: Robbins & Cotran Pathologic Basis of Disease
+    role: core pathology source
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)robbins'
 
@@ -75,15 +111,23 @@ sources:
     kind: textbook
     domain: movement
     title: Kinesiology of the Musculoskeletal System
+    role: core kinesiology and biomechanics source for rehabilitation
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)kinesiology.*neumann'
       - '(?i)kinesiology.*musculoskeletal.*neumann'
     part_pattern: '(?i)kinesiology neumann \((\d+)\)\.pdf$'
+    notes:
+      - Full PDF plus three split files represent one logical book.
 
   - logical_source_id: kisner-therapeutic-exercise
     kind: textbook
     domain: rehabilitation
     title: Therapeutic Exercise Foundations and Techniques
+    role: core therapeutic exercise source
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)therapeutic exercise foundations'
 
@@ -92,6 +136,9 @@ sources:
     domain: rehabilitation
     title: Physical Rehabilitation
     edition: "7"
+    role: core clinical rehabilitation source
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)physical rehabilitation.*(osullivan|o.sullivan)'
 
@@ -99,6 +146,9 @@ sources:
     kind: textbook
     domain: clinical
     title: Bates' Guide to Physical Examination and History Taking
+    role: core history and physical examination source
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)(^bates\.pdf$|bates.*physical examination)'
 
@@ -106,22 +156,38 @@ sources:
     kind: textbook
     domain: clinical-rehabilitation
     title: Orthopedic Physical Assessment
+    role: core musculoskeletal assessment source
+    identity_status: verify_from_source
+    source_map_state: deep_anchored
     match_patterns:
       - '(?i)(^ortho \d+\.pdf$|orthopedic physical assessment|magee)'
     part_pattern: '(?i)^ortho (\d+)\.pdf$'
+    notes:
+      - Split physical files are one logical book.
+      - Known identity trap: Ortho 6.pdf contains internal Chapter 7 and Ortho 7.pdf contains internal Chapter 6; internal headings override filename inference.
 
   - logical_source_id: katzung-basic-clinical-pharmacology
     kind: textbook
     domain: pharmacology
     title: Katzung's Basic & Clinical Pharmacology
+    role: core pharmacology source with current-validity gate for clinical claims
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)(^katzung_\d+\.pdf$|katzung.*basic.*clinical.*pharmacology)'
     part_pattern: '(?i)^katzung_(\d+)\.pdf$'
+    notes:
+      - Current direct-child Drive inventory contains Katzung_2.pdf through Katzung_20.pdf.
+      - Missing filename Katzung_1.pdf does not by itself prove missing source content.
+      - Existing KG metadata reports 16e; verify against the source before canonicalizing edition.
 
   - logical_source_id: yanoff-duker-ophthalmology
     kind: textbook
     domain: ophthalmology
     title: Ophthalmology
     edition: "2"
+    role: later specialty reference
+    identity_status: verify_from_source
+    source_map_state: unmapped
     match_patterns:
       - '(?i)ophthalmology.*(yanoff|duker)'
