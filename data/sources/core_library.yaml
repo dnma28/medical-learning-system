@@ -1,40 +1,59 @@
 # Logical source catalog — bootstrap
 #
-# This file contains stable logical identities only.
-# Google Drive file IDs are operational metadata and are intentionally not
-# committed here.
+# Stable logical identities plus cheap filename rules.
+# Google Drive file IDs are operational metadata and are not committed here.
 
 sources:
   - logical_source_id: guyton-hall-physiology
     kind: textbook
     domain: physiology
     title: Guyton and Hall Textbook of Medical Physiology
+    match_patterns:
+      - '(?i)(guyton|gyuton)'
 
   - logical_source_id: costanzo-physiology
     kind: textbook
     domain: physiology
     title: Costanzo Physiology
+    edition: "6"
+    match_patterns:
+      - '(?i)costanzo'
 
   - logical_source_id: ganong-medical-physiology
     kind: textbook
     domain: physiology
     title: Ganong's Review of Medical Physiology
+    match_patterns:
+      - '(?i)ganong'
 
   - logical_source_id: kandel-principles-neural-science
     kind: textbook
     domain: neuroscience
     title: Principles of Neural Science
+    match_patterns:
+      - '(?i)principles.*neural.*scien'
 
   - logical_source_id: stryer-biochemistry
     kind: textbook
     domain: biochemistry
     title: Biochemistry
+    match_patterns:
+      - '(?i)(jeremy.*berg|lubert.*stryer|stryer.*biochemistry)'
+
+  - logical_source_id: medical-biochemistry-183
+    kind: textbook
+    domain: biochemistry
+    title: Medical Biochemistry (source 183)
+    match_patterns:
+      - '(?i)(medical_biochemistry_183|^183 \(1\)\.pdf$)'
 
   - logical_source_id: moore-clinically-oriented-anatomy
     kind: textbook
     domain: anatomy
     title: Moore's Clinically Oriented Anatomy
     edition: "8"
+    match_patterns:
+      - '(?i)moore.*clinically oriented anatomy'
 
   - logical_source_id: junqueira-basic-histology
     kind: textbook
@@ -42,42 +61,67 @@ sources:
     title: Junqueira's Basic Histology
     edition: "17"
     publication_year: 2023
+    match_patterns:
+      - '(?i)junqueira'
 
   - logical_source_id: robbins-pathologic-basis-disease
     kind: textbook
     domain: pathology
     title: Robbins & Cotran Pathologic Basis of Disease
+    match_patterns:
+      - '(?i)robbins'
 
   - logical_source_id: neumann-kinesiology
     kind: textbook
     domain: movement
     title: Kinesiology of the Musculoskeletal System
-    physical_layout: split_parts
+    match_patterns:
+      - '(?i)kinesiology.*neumann'
+      - '(?i)kinesiology.*musculoskeletal.*neumann'
+    part_pattern: '(?i)kinesiology neumann \((\d+)\)\.pdf$'
 
   - logical_source_id: kisner-therapeutic-exercise
     kind: textbook
     domain: rehabilitation
     title: Therapeutic Exercise Foundations and Techniques
+    match_patterns:
+      - '(?i)therapeutic exercise foundations'
 
   - logical_source_id: osullivan-physical-rehabilitation
     kind: textbook
     domain: rehabilitation
     title: Physical Rehabilitation
     edition: "7"
+    match_patterns:
+      - '(?i)physical rehabilitation.*(osullivan|o.sullivan)'
 
   - logical_source_id: bates-physical-examination
     kind: textbook
     domain: clinical
     title: Bates' Guide to Physical Examination and History Taking
+    match_patterns:
+      - '(?i)(^bates\.pdf$|bates.*physical examination)'
 
   - logical_source_id: magee-orthopedic-physical-assessment
     kind: textbook
     domain: clinical-rehabilitation
     title: Orthopedic Physical Assessment
-    physical_layout: chapter_parts
+    match_patterns:
+      - '(?i)(^ortho \d+\.pdf$|orthopedic physical assessment|magee)'
+    part_pattern: '(?i)^ortho (\d+)\.pdf$'
 
   - logical_source_id: katzung-basic-clinical-pharmacology
     kind: textbook
     domain: pharmacology
     title: Katzung's Basic & Clinical Pharmacology
-    physical_layout: chapter_parts
+    match_patterns:
+      - '(?i)(^katzung_\d+\.pdf$|katzung.*basic.*clinical.*pharmacology)'
+    part_pattern: '(?i)^katzung_(\d+)\.pdf$'
+
+  - logical_source_id: yanoff-duker-ophthalmology
+    kind: textbook
+    domain: ophthalmology
+    title: Ophthalmology
+    edition: "2"
+    match_patterns:
+      - '(?i)ophthalmology.*(yanoff|duker)'
