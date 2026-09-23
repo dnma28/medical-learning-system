@@ -9,9 +9,8 @@ The initial mapping registry contains only identities directly verified in
 connected KG v5 patch metadata:
 
 - b04 → guyton-hall-physiology
+- b06 → ganong-medical-physiology (Ganong's Review of Medical Physiology, 26e; user-confirmed)
 - b08 → costanzo-physiology
-
-b06 is intentionally unresolved in this slice.
 
 ## Resolution sequence
 
