@@ -20,6 +20,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
 
     steps:
       - name: Checkout
@@ -54,73 +55,96 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           import urllib.error
           import urllib.request
           from urllib.parse import urlparse
 
-          token = os.environ["SUPABASE_ACCESS_TOKEN"]
-          request = urllib.request.Request(
-              "https://api.supabase.com/v1/projects",
-              headers={
-                  "Authorization": "Bearer " + token,
-                  "Accept": "application/json",
-              },
-              method="GET",
-          )
+          ref_pattern = re.compile(r"^[a-z0-9]+$")
 
-          try:
-              with urllib.request.urlopen(request, timeout=20) as response:
-                  projects = json.load(response)
-          except urllib.error.HTTPError as exc:
-              raise SystemExit(
-                  f"Supabase Management API authentication failed with HTTP {exc.code}"
-              ) from None
-          except urllib.error.URLError as exc:
-              raise SystemExit(
-                  "Supabase Management API was not reachable"
-              ) from exc
+          def valid(value):
+              return bool(value and ref_pattern.fullmatch(value))
 
-          if not isinstance(projects, list) or not projects:
-              raise SystemExit(
-                  "SUPABASE_ACCESS_TOKEN can access no Supabase projects."
-              )
-
-          accessible = {
-              str(project.get("id", "")).strip()
-              for project in projects
-              if str(project.get("id", "")).strip()
-          }
-          if not accessible:
-              raise SystemExit(
-                  "Supabase Management API returned no usable project IDs."
-              )
-
-          parsed = urlparse(os.environ["MLS_SUPABASE_URL"])
-          hints = set()
-          host = parsed.hostname or ""
-          suffix = ".supabase.co"
-          if host.endswith(suffix):
-              hints.add(host[: -len(suffix)])
-
-          parts = [part for part in parsed.path.split("/") if part]
-          for index in range(len(parts) - 2):
-              if parts[index:index + 2] == ["dashboard", "project"]:
-                  hints.add(parts[index + 2])
-
-          matches = accessible & hints
-          if len(matches) == 1:
-              project_ref = next(iter(matches))
-          elif len(accessible) == 1:
-              project_ref = next(iter(accessible))
-          elif len(matches) > 1:
-              raise SystemExit(
-                  "MLS_SUPABASE_URL ambiguously matches multiple accessible projects."
-              )
+          explicit = os.environ.get("SUPABASE_PROJECT_REF", "").strip()
+          if explicit:
+              if not valid(explicit):
+                  raise SystemExit(
+                      "SUPABASE_PROJECT_REF repository variable is malformed."
+                  )
+              project_ref = explicit
           else:
-              raise SystemExit(
-                  "Token can access multiple projects and MLS_SUPABASE_URL "
-                  "cannot safely disambiguate the deployment target."
-              )
+              parsed = urlparse(os.environ["MLS_SUPABASE_URL"])
+              host = parsed.hostname or ""
+              suffix = ".supabase.co"
+              hints = []
+
+              if host.endswith(suffix):
+                  candidate = host[: -len(suffix)]
+                  if valid(candidate):
+                      hints.append(candidate)
+
+              parts = [part for part in parsed.path.split("/") if part]
+              for index in range(len(parts) - 2):
+                  if parts[index:index + 2] == ["dashboard", "project"]:
+                      candidate = parts[index + 2]
+                      if valid(candidate):
+                          hints.append(candidate)
+
+              hints = list(dict.fromkeys(hints))
+              if len(hints) == 1:
+                  project_ref = hints[0]
+              elif len(hints) > 1:
+                  raise SystemExit(
+                      "MLS_SUPABASE_URL contains multiple project references."
+                  )
+              else:
+                  token = os.environ["SUPABASE_ACCESS_TOKEN"]
+                  request = urllib.request.Request(
+                      "https://api.supabase.com/v1/projects",
+                      headers={
+                          "Authorization": "Bearer " + token,
+                          "Accept": "application/json",
+                      },
+                      method="GET",
+                  )
+                  try:
+                      with urllib.request.urlopen(
+                          request,
+                          timeout=20,
+                      ) as response:
+                          projects = json.load(response)
+                  except urllib.error.HTTPError as exc:
+                      if exc.code == 403:
+                          raise SystemExit(
+                              "Project ref cannot be derived without broader "
+                              "Projects(account-wide) Read permission. Keep the "
+                              "token least-privilege and add the repository "
+                              "variable SUPABASE_PROJECT_REF instead."
+                          ) from None
+                      raise SystemExit(
+                          "Supabase Management API authentication failed "
+                          f"with HTTP {exc.code}"
+                      ) from None
+                  except urllib.error.URLError as exc:
+                      raise SystemExit(
+                          "Supabase Management API was not reachable"
+                      ) from exc
+
+                  accessible = [
+                      str(project.get("ref") or project.get("id") or "").strip()
+                      for project in projects
+                      if isinstance(project, dict)
+                  ]
+                  accessible = [
+                      value for value in dict.fromkeys(accessible)
+                      if valid(value)
+                  ]
+                  if len(accessible) != 1:
+                      raise SystemExit(
+                          "Project target remains ambiguous. Add the repository "
+                          "variable SUPABASE_PROJECT_REF."
+                      )
+                  project_ref = accessible[0]
 
           print(f"::add-mask::{project_ref}")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
