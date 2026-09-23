@@ -45,6 +45,15 @@
 - Keep physical-source file identity separate from logical-book identity.
 - Close known unindexed-foreign-key performance findings.
 
+### v0.10.1 — Source-aware HỌC90 — CURRENT
+
+- Structured logical-book/Source Map references in HỌC90 sessions and blueprints.
+- Minimal `HỌC 90: bắt đầu` / `HỌC 90: tiếp tục` bootstrap contract.
+- Source-gap recovery instead of silent model filling.
+- Freshness gating for CURRENT_CLINICAL_CHECK items.
+- REFERENCE_ONLY coverage without false mastery promotion.
+- Immediate append-only source-aware learning events.
+
 ## v0.11 — Multimodal source retrieval
 
 - Retrieve figure + caption + surrounding passage as one evidence unit.

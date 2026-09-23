@@ -4,6 +4,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from ..source_map import LearningValue
+
 
 class LearningRoute(str, Enum):
     SOURCE_RETRIEVAL = "source_retrieval"
@@ -14,8 +16,11 @@ class LearningRoute(str, Enum):
 
 class AdaptiveAction(str, Enum):
     START_RETRIEVAL = "start_retrieval"
+    VERIFY_CURRENT_EVIDENCE = "verify_current_evidence"
     PREREQUISITE_REPAIR = "prerequisite_repair"
     ERROR_REMEDIATION = "error_remediation"
+    SOURCE_RECOVERY = "source_recovery"
+    REFERENCE_COVERAGE = "reference_coverage"
     CONTINUE_SOURCE_SPINE = "continue_source_spine"
     CROSS_BOOK_EXPANSION = "cross_book_expansion"
     TRANSFER = "transfer"
@@ -25,13 +30,6 @@ class QualityMode(str, Enum):
     FAST = "fast"
     DEEP = "deep"
     CRITICAL = "critical"
-
-
-class LearningValue(str, Enum):
-    CORE_MASTERY = "core_mastery"
-    SUPPORTING = "supporting"
-    REFERENCE_ONLY = "reference_only"
-    CURRENT_CLINICAL_CHECK = "current_clinical_check"
 
 
 class LearningRequest(BaseModel):
@@ -45,13 +43,23 @@ class RoutingContext(BaseModel):
     session_start: bool = False
     source_spine: str | None = None
     current_toc_item: str | None = None
+    current_learning_value: LearningValue = LearningValue.CORE_MASTERY
 
     due_retrieval_concept_ids: list[str] = Field(default_factory=list)
     weak_required_prerequisite_ids: list[str] = Field(default_factory=list)
     open_error_ids: list[str] = Field(default_factory=list)
 
-    concept_is_complex: bool = False
+    source_gap: bool = False
+    source_anchor_available: bool = True
+    learner_requested_reference_detail: bool = False
+
+    freshness_required: bool = False
+    freshness_verified: bool = False
+    # Legacy v0.9 signal retained for compatibility. In v0.10.1 it is treated
+    # as an implicit freshness requirement.
     current_claim_is_time_sensitive_clinical: bool = False
+
+    concept_is_complex: bool = False
     source_is_insufficient_for_explanation: bool = False
     ready_for_transfer: bool = False
 
@@ -66,10 +74,10 @@ class RoutingDecision(BaseModel):
 
 
 class LearningRouter:
-    """Deterministic v6 routing rules.
+    """Deterministic source-aware HỌC90 routing rules.
 
-    The router may adapt the *within-session* path, but it never approves a
-    large curriculum change by itself. Curriculum changes remain human-approved.
+    The router may adapt bounded within-session paths. Large curriculum changes
+    remain learner-approved.
     """
 
     def route(self, request: LearningRequest) -> LearningRoute:
@@ -94,6 +102,33 @@ class LearningRouter:
                 return_to_source_spine=context.source_spine,
             )
 
+        if context.source_gap or not context.source_anchor_available:
+            return RoutingDecision(
+                action=AdaptiveAction.SOURCE_RECOVERY,
+                quality_mode=QualityMode.DEEP,
+                reason=(
+                    "The source target is missing or unresolved; recover the "
+                    "original source before teaching the claim."
+                ),
+                return_to_source_spine=context.source_spine,
+            )
+
+        needs_freshness = (
+            context.freshness_required
+            or context.current_claim_is_time_sensitive_clinical
+        )
+
+        if needs_freshness and not context.freshness_verified:
+            return RoutingDecision(
+                action=AdaptiveAction.VERIFY_CURRENT_EVIDENCE,
+                quality_mode=QualityMode.CRITICAL,
+                reason=(
+                    "The current source item is time-sensitive and requires "
+                    "current-validity verification before being taught as standard."
+                ),
+                return_to_source_spine=context.source_spine,
+            )
+
         if context.weak_required_prerequisite_ids:
             return RoutingDecision(
                 action=AdaptiveAction.PREREQUISITE_REPAIR,
@@ -109,6 +144,20 @@ class LearningRouter:
                 quality_mode=quality,
                 reason="An observed learner error remains open and should be retested.",
                 target_ids=context.open_error_ids,
+                return_to_source_spine=context.source_spine,
+            )
+
+        if (
+            context.current_learning_value == LearningValue.REFERENCE_ONLY
+            and not context.learner_requested_reference_detail
+        ):
+            return RoutingDecision(
+                action=AdaptiveAction.REFERENCE_COVERAGE,
+                quality_mode=QualityMode.FAST,
+                reason=(
+                    "Map and briefly cover the reference-only source item without "
+                    "turning it into an active mastery target."
+                ),
                 return_to_source_spine=context.source_spine,
             )
 
@@ -131,13 +180,16 @@ class LearningRouter:
         return RoutingDecision(
             action=AdaptiveAction.CONTINUE_SOURCE_SPINE,
             quality_mode=quality,
-            reason="Continue the approved source spine and current TOC position.",
+            reason="Continue the approved logical-book Source Map position.",
             return_to_source_spine=context.source_spine,
         )
 
     @staticmethod
     def _quality_mode(context: RoutingContext) -> QualityMode:
-        if context.current_claim_is_time_sensitive_clinical:
+        if (
+            context.freshness_required
+            or context.current_claim_is_time_sensitive_clinical
+        ):
             return QualityMode.CRITICAL
         if context.concept_is_complex:
             return QualityMode.DEEP
