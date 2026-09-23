@@ -25,8 +25,10 @@ For born-digital PDFs the cheapest high-confidence method is:
 
 1. take a Coverage heading and its physical start page;
 2. search native text blocks on that same page;
-3. require exact Unicode/case/whitespace-normalized heading equality;
-4. use the heading block's vertical position to activate that source section;
+3. prefer exact Unicode/case/whitespace-normalized heading equality;
+4. if no exact block exists, accept only one unique block whose normalized text starts with the full heading followed by body text;
+5. if multiple prefix candidates exist, mark the heading unresolved rather than guessing;
+6. use the matched block's vertical position to activate that source section;
 5. evidence after it follows the active hierarchy until the next exact heading.
 
 No fuzzy matching, embedding, OCR, or LLM is used.
@@ -43,7 +45,8 @@ assignment.
 ## Link methods
 
 - `exact_heading`: the evidence block is the exact source heading.
-- `heading_sequence`: the block follows an exact source heading in document order.
+- `heading_prefix`: the full heading is the unique prefix of a native block that also contains body text.
+- `heading_sequence`: the block follows a deterministic source-heading match in document order.
 - `page_range_candidate`: conservative fallback only.
 
 Ancestors are retained so retrieval can be evaluated at chapter and section
