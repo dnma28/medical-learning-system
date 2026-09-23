@@ -180,7 +180,7 @@ def test_semantic_search_always_names_embedding_model():
         {
             "evidence_id": "ev-1",
             "source_id": "costanzo",
-            "structure_node_id": "section-1",
+            "structure_node_ids": ["chapter-1", "section-1"],
             "page_index": 10,
             "content_type": "text",
             "text": "K permeability",
@@ -196,6 +196,7 @@ def test_semantic_search_always_names_embedding_model():
     )
 
     assert hits[0].score == 0.91
+    assert hits[0].structure_node_ids == {"chapter-1", "section-1"}
     name, params = client.rpc_calls[-1]
     assert name == "mls_match_evidence"
     assert params["embedding_model_filter"] == "model-a"
@@ -208,7 +209,7 @@ def test_keyword_search_requires_no_embedding():
         {
             "evidence_id": "ev-2",
             "source_id": "guyton",
-            "structure_node_id": None,
+            "structure_node_ids": [],
             "page_index": 4,
             "content_type": "text",
             "text": "resting membrane potential",
@@ -222,3 +223,41 @@ def test_keyword_search_requires_no_embedding():
     assert hits[0].source_id == "guyton"
     assert hits[0].score == 0.72
     assert client.rpc_calls[-1][0] == "mls_keyword_evidence"
+
+
+def test_single_structure_link_preserves_legacy_scalar_field():
+    client = FakeClient()
+    client.rpc_results["mls_keyword_evidence"] = [
+        {
+            "evidence_id": "ev-legacy",
+            "source_id": "costanzo",
+            "structure_node_ids": ["section-a"],
+            "page_index": 4,
+            "content_type": "text",
+            "text": "membrane",
+            "rank": 0.9,
+        }
+    ]
+    store = SupabaseRetrievalStore(client)
+    hit = store.keyword_search("membrane")[0]
+    assert hit.structure_node_id == "section-a"
+    assert hit.structure_node_ids == {"section-a"}
+
+
+def test_ambiguous_structure_links_do_not_collapse_to_legacy_scalar():
+    client = FakeClient()
+    client.rpc_results["mls_keyword_evidence"] = [
+        {
+            "evidence_id": "ev-ambiguous",
+            "source_id": "costanzo",
+            "structure_node_ids": ["section-a", "section-b"],
+            "page_index": 4,
+            "content_type": "text",
+            "text": "membrane",
+            "rank": 0.8,
+        }
+    ]
+    store = SupabaseRetrievalStore(client)
+    hit = store.keyword_search("membrane")[0]
+    assert hit.structure_node_id is None
+    assert hit.structure_node_ids == {"section-a", "section-b"}
