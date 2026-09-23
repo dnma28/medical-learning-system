@@ -15,7 +15,7 @@
 - Relation-to-claim support and append-only claim/relation audit ledgers.
 - Lossless KG v5 migration/audit path.
 
-## v0.9 — Adaptive HỌC90 runtime — CURRENT
+## v0.9 — Adaptive HỌC90 runtime — COMPLETED
 
 - Evidence-based learner mastery M0–M7.
 - Learner Error Graph with observed-error history.
@@ -34,13 +34,16 @@
 - One real HỌC90 session can be persisted, paused, and resumed without transcript dependence.
 - One real concept can accumulate retrieval evidence without auto-promoting mastery from exposure.
 
-## v0.10 — Source Map + Book Registry normalization
+## v0.10 — Source Map + Book Registry normalization — CURRENT
 
 - Mirror the Drive logical-book registry into machine-readable source metadata.
 - Normalize full-book vs split-file representations.
 - Build/validate full TOC Source Maps for the corpus.
 - Add learning-value classification: CORE_MASTERY / SUPPORTING / REFERENCE_ONLY / CURRENT_CLINICAL_CHECK.
 - Preserve source identity/edition/page/chapter mappings.
+- Sync the 16 logical books into Supabase runtime metadata.
+- Keep physical-source file identity separate from logical-book identity.
+- Close known unindexed-foreign-key performance findings.
 
 ## v0.11 — Multimodal source retrieval
 
