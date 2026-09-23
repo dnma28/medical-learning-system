@@ -7,6 +7,10 @@ on:
     paths:
       - ".github/workflows/supabase-migration-dry-run.yml"
       - "supabase/migrations/**"
+  pull_request:
+    paths:
+      - ".github/workflows/supabase-migration-dry-run.yml"
+      - "supabase/migrations/**"
   workflow_dispatch:
 
 permissions:
