@@ -10,7 +10,7 @@ Required GitHub Actions secrets:
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_DB_PASSWORD`
 
-The project reference is derived from `MLS_SUPABASE_URL`, masked in workflow logs, and is not duplicated in repository configuration.
+The project reference is discovered from the Supabase Management API using `SUPABASE_ACCESS_TOKEN` and masked in workflow logs. If the token can access more than one project, `MLS_SUPABASE_URL` is used only as a disambiguation hint; otherwise the workflow fails rather than guessing.
 
 ## Reproducibility
 
