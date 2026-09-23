@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from medical_learning_system.retrieval.openai_provider import build_openai_rag
+from medical_learning_system.retrieval.openai_provider import build_openai_rag_ready
 from medical_learning_system.retrieval.rag_anything_adapter import RAGConfig
 
 
@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
 
 async def run(args: argparse.Namespace) -> None:
     load_dotenv()
-    rag = build_openai_rag(
+    rag = await build_openai_rag_ready(
         RAGConfig(
             working_dir=args.working_dir,
             parser=args.parser,
