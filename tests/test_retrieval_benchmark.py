@@ -6,6 +6,7 @@ from medical_learning_system.retrieval.benchmark import (
     BenchmarkHit,
     BenchmarkQuery,
     BenchmarkRunRecord,
+    score_query,
     summarize_run,
 )
 
