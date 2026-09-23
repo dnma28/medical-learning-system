@@ -31,6 +31,7 @@ mls-evaluate-retrieval = "medical_learning_system.cli.evaluate_retrieval:main"
 mls-pilot-ingest = "medical_learning_system.cli.pilot_ingest:main"
 mls-compile-source = "medical_learning_system.cli.compile_source:main"
 mls-worker-once = "medical_learning_system.cli.worker_once:main"
+mls-kg-v5-audit = "medical_learning_system.cli.kg_v5_audit:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
