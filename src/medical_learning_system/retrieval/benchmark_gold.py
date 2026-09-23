@@ -83,7 +83,7 @@ def resolve_source_gold(
                 node
                 for node in nodes
                 if node.kind == StructureKind.CHAPTER
-                and _norm(node.title) == _norm(anchor.chapter_title)
+                and _chapter_norm(node.title) == _chapter_norm(anchor.chapter_title)
             ]
             if len(chapters) != 1:
                 raise GoldResolutionError(
@@ -139,3 +139,23 @@ def _descendants(
 
 def _norm(value: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
+def _chapter_norm(value: str) -> str:
+    normalized = _norm(value)
+    tokens = normalized.split()
+    if not tokens:
+        return normalized
+
+    if tokens[0] == "chapter" and len(tokens) >= 2 and _is_chapter_number(tokens[1]):
+        return " ".join(tokens[2:])
+    if _is_chapter_number(tokens[0]):
+        return " ".join(tokens[1:])
+    return normalized
+
+
+def _is_chapter_number(token: str) -> bool:
+    cleaned = token.strip(":.\\-–—")
+    if cleaned.isdigit():
+        return True
+    return bool(cleaned) and all(char in "ivxlcdm" for char in cleaned)

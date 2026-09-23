@@ -130,3 +130,15 @@ def test_logical_source_mismatch_fails():
             physical_source_id=PHYSICAL,
             nodes=structure(),
         )
+
+
+def test_chapter_number_prefix_is_deterministically_ignored():
+    nodes = structure()
+    nodes[1] = nodes[1].model_copy(update={"title": "1 Chapter A"})
+    resolved = resolve_source_gold(
+        [item()],
+        logical_source_id=LOGICAL,
+        physical_source_id=PHYSICAL,
+        nodes=nodes,
+    )
+    assert resolved[0].relevant_structure_nodes == {"sub-beta"}
