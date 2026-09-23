@@ -100,8 +100,16 @@ jobs:
             --db-url "$SUPABASE_DB_URL"
 
       - name: Preview pending migrations only
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           npx --yes supabase@2.117.0 db push \
             --db-url "$SUPABASE_DB_URL" \
             --dry-run
+
+      - name: Apply reviewed migrations on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          npx --yes supabase@2.117.0 db push \
+            --db-url "$SUPABASE_DB_URL"
