@@ -119,3 +119,23 @@ def test_book_root_cannot_be_marked_as_learned(tmp_path):
 
     with pytest.raises(ValueError, match="book root"):
         store.set_coverage(SOURCE, "book", CoverageState.MASTERED)
+
+
+def test_structure_refresh_can_reorder_retained_nodes(tmp_path):
+    store = CoverageStore(tmp_path / "coverage.sqlite3")
+    store.replace_structure(SOURCE, tree())
+    store.set_coverage(SOURCE, "ch1-membrane", CoverageState.MASTERED)
+
+    reordered = tree()
+    reordered[2] = reordered[2].model_copy(update={"order_index": 3})
+    reordered[3] = reordered[3].model_copy(update={"order_index": 2})
+    store.replace_structure(SOURCE, reordered)
+
+    loaded = store.get_structure(SOURCE)
+    assert [node.node_id for node in loaded] == [
+        "book",
+        "ch1",
+        "ch1-transport",
+        "ch1-membrane",
+    ]
+    assert store.summarize(SOURCE).mastered == 1
