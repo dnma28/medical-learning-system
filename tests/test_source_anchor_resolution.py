@@ -58,7 +58,7 @@ def test_unmapped_legacy_source_stays_unmapped():
     )
 
     assert result.identity_state == AnchorIdentityState.UNMAPPED_LEGACY_SOURCE
-    assert result.canonical_evidence_ready is False
+    assert result.evidence_candidates_resolved is False
 
 
 def test_edition_mismatch_does_not_fall_back_to_wrong_book_version():
@@ -130,7 +130,7 @@ def test_pass_anchor_resolves_explicit_pages_to_evidence():
     assert result.evidence_ids == sorted(
         [page_15.evidence_id, page_16.evidence_id]
     )
-    assert result.canonical_evidence_ready is True
+    assert result.evidence_candidates_resolved is True
 
 
 def test_gap_anchor_never_becomes_ready_even_when_page_exists():
@@ -161,7 +161,7 @@ def test_gap_anchor_never_becomes_ready_even_when_page_exists():
 
     assert result.identity_state == AnchorIdentityState.RESOLVED
     assert result.evidence_ids == [evidence.evidence_id]
-    assert result.canonical_evidence_ready is False
+    assert result.evidence_candidates_resolved is True
     assert result.anchor_verification_state == "GAP"
 
 
