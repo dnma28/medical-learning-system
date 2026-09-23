@@ -4,6 +4,7 @@ candidates:
     expected_dimension: 1024
     max_input_tokens: 8192
     language_scope: multilingual
+    source_url: "https://huggingface.co/BAAI/bge-m3"
     query_template: "{text}"
     document_template: "{text}"
     normalize_embeddings: true
@@ -17,6 +18,7 @@ candidates:
     expected_dimension: 1024
     max_input_tokens: 512
     language_scope: multilingual
+    source_url: "https://huggingface.co/intfloat/multilingual-e5-large-instruct"
     query_template: |-
       Instruct: Given a Vietnamese medical study question, retrieve relevant English medical textbook passages that answer the question
       Query: {text}
@@ -32,6 +34,7 @@ candidates:
     expected_dimension: 768
     max_input_tokens: 8192
     language_scope: multilingual
+    source_url: "https://huggingface.co/Alibaba-NLP/gte-multilingual-base"
     query_template: "{text}"
     document_template: "{text}"
     normalize_embeddings: true
@@ -45,6 +48,7 @@ candidates:
     expected_dimension: 768
     max_input_tokens: 512
     language_scope: english-biomedical
+    source_url: "https://huggingface.co/NeuML/pubmedbert-base-embeddings"
     query_template: "{text}"
     document_template: "{text}"
     normalize_embeddings: true
