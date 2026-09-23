@@ -55,6 +55,9 @@ class RoutingContext(BaseModel):
 
     freshness_required: bool = False
     freshness_verified: bool = False
+    # Legacy v0.9 signal retained for compatibility. In v0.10.1 it is treated
+    # as an implicit freshness requirement.
+    current_claim_is_time_sensitive_clinical: bool = False
 
     concept_is_complex: bool = False
     source_is_insufficient_for_explanation: bool = False
@@ -110,7 +113,12 @@ class LearningRouter:
                 return_to_source_spine=context.source_spine,
             )
 
-        if context.freshness_required and not context.freshness_verified:
+        needs_freshness = (
+            context.freshness_required
+            or context.current_claim_is_time_sensitive_clinical
+        )
+
+        if needs_freshness and not context.freshness_verified:
             return RoutingDecision(
                 action=AdaptiveAction.VERIFY_CURRENT_EVIDENCE,
                 quality_mode=QualityMode.CRITICAL,
@@ -178,7 +186,10 @@ class LearningRouter:
 
     @staticmethod
     def _quality_mode(context: RoutingContext) -> QualityMode:
-        if context.freshness_required:
+        if (
+            context.freshness_required
+            or context.current_claim_is_time_sensitive_clinical
+        ):
             return QualityMode.CRITICAL
         if context.concept_is_complex:
             return QualityMode.DEEP
