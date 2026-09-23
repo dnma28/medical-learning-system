@@ -101,6 +101,28 @@ def from_raganything_content(
     )
 
 
+def materialize_evidence_only(
+    *,
+    source_id: str,
+    parsed: ParsedDocument,
+) -> list[SourceEvidenceBlock]:
+    """Persist parser output as Evidence without inferring source hierarchy."""
+    return [
+        make_evidence_block(
+            source_id=source_id,
+            block_index=block.block_index,
+            page_index=block.page_index,
+            content_type=block.content_type,
+            parser=parsed.parser,
+            parser_version=parsed.parser_version,
+            text=block.text,
+            asset_ref=block.asset_ref,
+            bbox=block.bbox,
+        )
+        for block in sorted(parsed.blocks, key=lambda item: item.block_index)
+    ]
+
+
 def materialize_parsed_document(
     *,
     source_id: str,
