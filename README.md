@@ -2,9 +2,9 @@
 
 Source-grounded, adaptive medical learning backend for the **Học nền tảng y học** project.
 
-## Current version: v0.10
+## Current version: v0.10.1
 
-v0.10 adds a canonical machine-readable Book Registry and logical-book Source Map layer on top of the v0.9 adaptive HỌC90 runtime:
+v0.10.1 makes HỌC90 source-aware on top of the v0.10 Book Registry and logical-book Source Map layer:
 
 - **Google Drive** holds original textbooks and human-readable source maps/curriculum.
 - **GitHub** holds machine contracts, retrieval, validation, routing, tests, and migrations.
@@ -13,6 +13,7 @@ v0.10 adds a canonical machine-readable Book Registry and logical-book Source Ma
 - **Canonical Medical Knowledge** remains separate from Candidate/Evidence data and from learner state.
 - **Logical Book Registry** separates one book from its one-or-many physical Drive files.
 - **Source Maps** preserve full book/TOC navigation without equating coverage with mastery.
+- **HỌC90 blueprints/sessions** carry structured logical-book, Source Map, physical-source and freshness references.
 
 ## Architecture
 
@@ -149,6 +150,7 @@ See:
 - `docs/THIRD_PARTY_TOOL_EVALUATION.md`
 - `docs/V0_9_ADAPTIVE_RUNTIME.md`
 - `docs/V0_10_SOURCE_REGISTRY.md`
+- `docs/V0_10_1_SOURCE_AWARE_HOC90.md`
 
 ## Copyright and secrets
 
