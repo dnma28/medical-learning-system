@@ -45,38 +45,14 @@ class SupabaseSourceMapStore:
         return dict(rows[0]) if rows else None
 
     def replace_source_map(self, source_map: LogicalSourceMap) -> int:
-        # A Source Map is a derived navigation artifact. Replacing the map must
-        # not delete physical source evidence or Canonical Medical KG data.
-        (
-            self.client.table(self.SOURCE_MAP_NODES)
-            .delete()
-            .eq("logical_source_id", source_map.logical_source_id)
-            .execute()
+        # PostgREST executes delete, upsert, and state updates in separate
+        # transactions. An error after delete would leave a partial/empty map.
+        # Keep production imports disabled until a staging-backed RPC performs
+        # validation, version guard, and replacement in one database transaction.
+        raise RuntimeError(
+            "Source Map replacement requires audited staging and an atomic "
+            "version-guarded promotion RPC"
         )
-
-        ordered = sorted(source_map.nodes, key=lambda node: node.order_index)
-        if ordered:
-            (
-                self.client.table(self.SOURCE_MAP_NODES)
-                .upsert(
-                    [_source_map_node_to_row(node) for node in ordered],
-                    on_conflict="logical_source_id,node_id",
-                )
-                .execute()
-            )
-
-        (
-            self.client.table(self.LOGICAL_SOURCES)
-            .update(
-                {
-                    "source_map_state": source_map.state.value,
-                    "updated_at": _utcnow(),
-                }
-            )
-            .eq("logical_source_id", source_map.logical_source_id)
-            .execute()
-        )
-        return len(ordered)
 
     def get_source_map(self, logical_source_id: str) -> list[dict[str, Any]]:
         response = (
