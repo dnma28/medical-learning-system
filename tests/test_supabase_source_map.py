@@ -1,3 +1,5 @@
+import pytest
+
 from medical_learning_system.coverage import StructureKind
 from medical_learning_system.source_catalog import (
     IdentityStatus,
@@ -162,10 +164,10 @@ def test_catalog_sync_and_source_map_replace():
         ],
     )
 
-    assert store.replace_source_map(source_map) == 2
-    nodes = store.get_source_map("costanzo-physiology")
-    assert [node["node_id"] for node in nodes] == ["book", "ch1"]
-    assert (
-        store.get_logical_source("costanzo-physiology")["source_map_state"]
-        == "toc_mapped"
-    )
+    client.tables[store.SOURCE_MAP_NODES] = [
+        {"logical_source_id": "costanzo-physiology", "node_id": "old"}
+    ]
+    with pytest.raises(RuntimeError, match="atomic version-guarded promotion RPC"):
+        store.replace_source_map(source_map)
+    assert store.get_source_map("costanzo-physiology")[0]["node_id"] == "old"
+    assert store.get_logical_source("costanzo-physiology")["source_map_state"] == "unmapped"
