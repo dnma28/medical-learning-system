@@ -199,7 +199,7 @@ def test_completeness_reports_explicit_gaps_without_inference():
     assert report.ready_for_hoc90 is False
 
 
-def test_completeness_ready_requires_explicit_source_for_every_structural_node():
+def test_completeness_does_not_claim_readiness_from_source_ids_alone():
     source_map = LogicalSourceMap(
         logical_source_id="book",
         state=SourceMapState.SECTION_ANCHORED,
@@ -210,7 +210,9 @@ def test_completeness_ready_requires_explicit_source_for_every_structural_node()
         ],
     )
 
-    assert source_map.completeness().ready_for_hoc90 is True
+    assert source_map.completeness().anchored_nodes == 2
+    assert source_map.completeness().ready_for_hoc90 is False
+    assert "authoritative_toc_denominator_unverified" in source_map.completeness().readiness_blockers
 
 
 def test_completeness_book_only_map_is_not_ready():
