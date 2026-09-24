@@ -61,6 +61,16 @@ class SourceMapNode(BaseModel):
         return self
 
 
+class SourceMapCompleteness(BaseModel):
+    logical_source_id: str
+    structural_nodes: int = Field(ge=0)
+    anchored_nodes: int = Field(ge=0)
+    unanchored_node_ids: list[str]
+    open_ended_page_node_ids: list[str]
+    ready_for_hoc90: bool
+    readiness_blockers: list[str]
+
+
 class LogicalSourceMap(BaseModel):
     logical_source_id: str = Field(min_length=1)
     state: SourceMapState
@@ -70,6 +80,35 @@ class LogicalSourceMap(BaseModel):
     def validate_tree(self) -> "LogicalSourceMap":
         validate_source_map(self.logical_source_id, self.nodes)
         return self
+
+    def completeness(self) -> SourceMapCompleteness:
+        structural = [node for node in self.nodes if node.kind != StructureKind.BOOK]
+        anchored = [node for node in structural if node.source_id is not None]
+        unanchored = [node.node_id for node in structural if node.source_id is None]
+        open_ended = [
+            node.node_id
+            for node in structural
+            if node.page_start is not None and node.page_end is None
+        ]
+        return SourceMapCompleteness(
+            logical_source_id=self.logical_source_id,
+            structural_nodes=len(structural),
+            anchored_nodes=len(anchored),
+            unanchored_node_ids=unanchored,
+            open_ended_page_node_ids=open_ended,
+            # Binding is only one dimension. A map without a certified printed/body
+            # TOC denominator, locator QA and source/version evidence is never ready.
+            # The state label is historical metadata, not an audit certificate.
+            ready_for_hoc90=False,
+            readiness_blockers=[
+                "authoritative_toc_denominator_unverified",
+                "required_toc_coverage_unverified",
+                "locator_anchor_qa_unverified",
+                "source_fingerprint_unverified",
+                "extraction_version_unverified",
+                "hierarchy_and_unresolved_issues_unverified",
+            ] + (["physical_binding_missing"] if unanchored else []),
+        )
 
 
 def validate_source_map(
