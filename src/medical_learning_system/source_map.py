@@ -96,7 +96,18 @@ class LogicalSourceMap(BaseModel):
             anchored_nodes=len(anchored),
             unanchored_node_ids=unanchored,
             open_ended_page_node_ids=open_ended,
-            # Binding is only one dimension. A map without a certified printed/body\n            # TOC denominator, locator QA and source/version evidence is never ready.\n            # The state label is historical metadata, not an audit certificate.\n            ready_for_hoc90=False,\n            readiness_blockers=[\n                "authoritative_toc_denominator_unverified",\n                "required_toc_coverage_unverified",\n                "locator_anchor_qa_unverified",\n                "source_fingerprint_unverified",\n                "extraction_version_unverified",\n                "hierarchy_and_unresolved_issues_unverified",\n            ] + (["physical_binding_missing"] if unanchored else []),
+            # Binding is only one dimension. A map without a certified printed/body
+            # TOC denominator, locator QA and source/version evidence is never ready.
+            # The state label is historical metadata, not an audit certificate.
+            ready_for_hoc90=False,
+            readiness_blockers=[
+                "authoritative_toc_denominator_unverified",
+                "required_toc_coverage_unverified",
+                "locator_anchor_qa_unverified",
+                "source_fingerprint_unverified",
+                "extraction_version_unverified",
+                "hierarchy_and_unresolved_issues_unverified",
+            ] + (["physical_binding_missing"] if unanchored else []),
         )
 
 
