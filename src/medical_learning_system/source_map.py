@@ -68,6 +68,7 @@ class SourceMapCompleteness(BaseModel):
     unanchored_node_ids: list[str]
     open_ended_page_node_ids: list[str]
     ready_for_hoc90: bool
+    readiness_blockers: list[str]
 
 
 class LogicalSourceMap(BaseModel):
@@ -95,7 +96,7 @@ class LogicalSourceMap(BaseModel):
             anchored_nodes=len(anchored),
             unanchored_node_ids=unanchored,
             open_ended_page_node_ids=open_ended,
-            ready_for_hoc90=bool(structural) and not unanchored,
+            # Binding is only one dimension. A map without a certified printed/body\n            # TOC denominator, locator QA and source/version evidence is never ready.\n            # The state label is historical metadata, not an audit certificate.\n            ready_for_hoc90=False,\n            readiness_blockers=[\n                "authoritative_toc_denominator_unverified",\n                "required_toc_coverage_unverified",\n                "locator_anchor_qa_unverified",\n                "source_fingerprint_unverified",\n                "extraction_version_unverified",\n                "hierarchy_and_unresolved_issues_unverified",\n            ] + (["physical_binding_missing"] if unanchored else []),
         )
 
 
