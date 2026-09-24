@@ -1,15 +1,7 @@
 # v0.10.2 Source Map completeness
 
-`LogicalSourceMap.completeness()` is a read-only gate over explicit Source Map data. It does not create mappings or promote `source_map_state`.
+`LogicalSourceMap.completeness()` reports structural node counts, physical bindings, and open-ended point locators without filling gaps. The map's historical `source_map_state` is descriptive.
 
-The report excludes the BOOK root from structural coverage and records:
+`ready_for_hoc90` deliberately fails closed. Binding all *present* nodes to source IDs does not establish the printed/body TOC denominator or coverage of missing nodes. A future audited certificate must verify the authoritative TOC denominator and all required entries, physical source identity and valid fingerprint, locator and anchor QA, valid hierarchy, valid extraction/version, and zero unresolved SOURCE_GAP or REVIEW_REQUIRED before readiness can be true. A point heading anchor locates a heading; it does not prove full section coverage.
 
-- number of structural nodes;
-- nodes with an explicit `source_id`;
-- node IDs whose physical source remains unknown;
-- page locators with a known start but unknown end;
-- whether every structural node has explicit physical-source provenance.
-
-`ready_for_hoc90` is false for a BOOK-only map and whenever any structural node lacks `source_id`. An open-ended page range is reported but is not guessed or automatically completed. A node may legitimately be source-anchored without a page locator when the verified source identity is known but finer localization is not yet available.
-
-This report measures Source Map completeness only. It is not learner mastery, evidence quality, Candidate/Canonical KG status, or a medical-truth signal. Missing values remain unknown until verified from source material.
+This report does not measure learner mastery, curriculum priority, evidence quality, or Canonical Medical KG status. No `learning_value` should be assigned to staging candidates merely to satisfy runtime defaults.
