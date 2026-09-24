@@ -88,7 +88,9 @@ def structure_from_pdf_outline_entries(
         for entry in entries
     ]
     result = structure_from_headings(source_id, book_title, headings)
-    return _with_page_ranges(result, page_count)
+    # A bookmark destination is a point locator. The next bookmark or the PDF
+    # page count does not prove where this heading's content ends.
+    return result
 
 
 def structure_from_pdf_outline(
@@ -113,33 +115,3 @@ def structure_from_pdf_outline(
     )
 
 
-
-def _with_page_ranges(
-    result: StructureExtractionResult,
-    page_count: int | None,
-) -> StructureExtractionResult:
-    nodes = result.nodes
-    ranged = []
-    for index, node in enumerate(nodes):
-        if node.page_start is None or node.depth == 0:
-            ranged.append(node)
-            continue
-
-        next_start = None
-        for later in nodes[index + 1 :]:
-            if (
-                later.page_start is not None
-                and later.depth <= node.depth
-            ):
-                next_start = later.page_start
-                break
-
-        page_end = None
-        if next_start is not None:
-            page_end = max(node.page_start, next_start - 1)
-        elif page_count is not None:
-            page_end = max(node.page_start, page_count)
-
-        ranged.append(node.model_copy(update={"page_end": page_end}))
-
-    return result.model_copy(update={"nodes": ranged})
