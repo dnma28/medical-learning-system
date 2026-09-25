@@ -30,15 +30,16 @@ def validate(body: str, paths: list[str]) -> list[str]:
     errors = [f"Missing or empty section: ## {name}" for name in _REQUIRED if not filled(name)]
     if filled("Issue") and not re.search(r"(?<!\w)#\d+\b", sections["Issue"]):
         errors.append("## Issue must reference a numbered GitHub issue")
-    docs_only = bool(paths) and all(
+    source_gated = any(
+        marker in path.casefold() for path in paths for marker in _SOURCE_GATED
+    )
+    docs_only = bool(paths) and not source_gated and all(
         path.startswith(_DOC_PREFIXES) or path == ".github/PULL_REQUEST_TEMPLATE.md"
         for path in paths
     )
     if not docs_only and not filled("Risk and provenance"):
         errors.append("Code/schema/source changes require ## Risk and provenance")
-    if any(marker in path for path in paths for marker in _SOURCE_GATED) and not filled(
-        "Gate evidence"
-    ):
+    if source_gated and not filled("Gate evidence"):
         errors.append("Source Map or migration changes require ## Gate evidence")
     if not paths:
         errors.append("No changed files returned; cannot classify PR")
