@@ -4,8 +4,9 @@
 
 ```mermaid
 flowchart TD
-    D["Drive textbooks + human-readable maps/curriculum"] --> P["Parser / evidence alignment"]
-    D --> S["Source Map proposal + human review"]
+    T["Drive textbooks"] --> P["Parser / evidence alignment"]
+    T --> S["Source Map proposal + human review"]
+    D["Drive Source Map drafts / reviewed mirrors"] --> S
     P --> S
     P --> C["Candidate / Evidence Graph"]
     S --> V["TOC audit + certificate + promotion"]
@@ -13,6 +14,7 @@ flowchart TD
     C --> A["Claim / relation audit"]
     A --> K["Canonical Medical KG"]
     M --> R["Learning Router"]
+    Q["Drive approved curriculum"] --> R
     K --> R
     U["Supabase learner state"] --> R
     R --> H["HỌC90 in ChatGPT"]
