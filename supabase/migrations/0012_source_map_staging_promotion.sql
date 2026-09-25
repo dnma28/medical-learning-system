@@ -102,6 +102,9 @@ begin
        or nullif(s.audit_metadata->'toc_evidence'->>'source_id','') is null
        or nullif(s.audit_metadata->'toc_evidence'->>'locator','') is null
        or nullif(s.audit_metadata->'toc_evidence'->>'source_sha256','') is null
+       or s.audit_metadata->>'required_review_required' is distinct from '0'
+       or s.audit_metadata->>'required_source_gap' is distinct from '0'
+       or s.audit_metadata->>'unclassified_observations' is distinct from '0'
        or s.audit_metadata->'qa' is distinct from
           '{"toc_coverage_valid":true,"hierarchy_valid":true,"locator_qa_passed":true,"fingerprint_valid":true,"extraction_valid":true,"staging_qa_passed":true}'::jsonb
     then raise exception 'missing full-book TOC or QA attestation'; end if;
@@ -125,7 +128,7 @@ begin
     if v_total < 2 or v_required <> s.toc_denominator
        or (select count(distinct n.value->>'node_id')
            from pg_catalog.jsonb_array_elements(s.proposal) n) <> v_total
-       or (select count(distinct n.value->>'order_index')
+       or (select count(distinct (n.value->>'order_index')::integer)
            from pg_catalog.jsonb_array_elements(s.proposal) n) <> v_total
     then raise exception 'staged node identities do not match TOC denominator'; end if;
 
@@ -133,6 +136,8 @@ begin
         where n.value->>'kind' = 'book'
           and n.value->>'parent_id' is null
           and n.value->>'depth' = '0') <> 1
+       or (select count(*) from pg_catalog.jsonb_array_elements(s.proposal) n
+           where n.value->>'kind' = 'book') <> 1
        or exists (
         select 1 from pg_catalog.jsonb_array_elements(s.proposal) n
         where pg_catalog.jsonb_typeof(n.value) <> 'object'
@@ -147,6 +152,16 @@ begin
            or n.value->>'depth' !~ '^[0-9]+$'
            or n.value->>'order_index' is null
            or n.value->>'order_index' !~ '^[0-9]+$'
+           or pg_catalog.jsonb_typeof(n.value->'issues') not in ('array')
+               and n.value->'issues' is not null
+           or (pg_catalog.jsonb_typeof(n.value->'issues') = 'array'
+               and pg_catalog.jsonb_array_length(n.value->'issues') > 0)
+           or (n.value->>'learning_value' is not null
+               and n.value->>'learning_value' not in
+                   ('core_mastery','supporting','reference_only',
+                    'current_clinical_check'))
+           or (n.value->>'learning_value' = 'current_clinical_check'
+               and n.value->>'freshness_required' is distinct from 'true')
            or (n.value->>'kind' <> 'book'
                and nullif(n.value->>'parent_id','') is null)
        )
@@ -188,13 +203,15 @@ begin
             or n.value->'source_anchor' = '{}'::jsonb
             or (n.value->>'locator_kind' = 'point'
                 and (n.value->>'page_end' is not null
+                    or (n.value->>'page_start' is not null
+                        and (n.value->>'page_start' !~ '^[1-9][0-9]*$'))
                     or n.value->'source_anchor'->>'scope'
                         is distinct from 'heading_point_not_section_range'))
             or (n.value->>'locator_kind' = 'verified_range'
                 and (n.value->>'page_start' is null
                   or n.value->>'page_end' is null
-                  or n.value->>'page_start' !~ '^[0-9]+$'
-                  or n.value->>'page_end' !~ '^[0-9]+$'
+                  or n.value->>'page_start' !~ '^[1-9][0-9]*$'
+                  or n.value->>'page_end' !~ '^[1-9][0-9]*$'
                   or (n.value->>'page_end')::int < (n.value->>'page_start')::int
                   or n.value->'source_anchor'->>'scope'
                      is distinct from 'verified_section_range'))
