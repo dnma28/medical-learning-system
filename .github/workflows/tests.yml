@@ -16,3 +16,14 @@ jobs:
         run: pip install -e '.[dev]'
       - name: Run tests
         run: pytest -q
+  optional-tool-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install optional tools
+        run: pip install -e '.[markitdown,langgraph]'
+      - name: Verify local conversion and graph execution
+        run: python scripts/check_optional_tools.py

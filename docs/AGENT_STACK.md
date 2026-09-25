@@ -121,3 +121,21 @@ See `docs/THIRD_PARTY_TOOL_EVALUATION.md` for why the other candidate repositori
 ## Multiple AI sessions
 
 Use [AI_WORK_QUEUE.md](AI_WORK_QUEUE.md) for bounded issue claims, handoffs, independent review and change-specific gates. GitHub Issues and PRs carry durable state; a ChatGPT session ends when its turn ends.
+
+## Optional LangGraph library
+
+Install the existing MarkItDown adapter and the pinned LangGraph library together:
+
+```bash
+python -m pip install -e '.[markitdown,langgraph]'
+python scripts/check_optional_tools.py
+```
+
+The smoke check converts a synthetic local HTML file through the existing
+`ParsedDocument` adapter and runs a small LangGraph `StateGraph`. It uses
+no model, external API, textbook, Supabase connection, or persistent store.
+Installation does not start agents, issue polling, or unattended GitHub
+workflows. GitHub Issues and PRs remain the work queue and review record
+described in [AI_WORK_QUEUE.md](AI_WORK_QUEUE.md). Any later graph that
+performs writes needs a scoped issue, explicit credentials, review gates,
+and a separate implementation.
