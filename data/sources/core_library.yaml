@@ -90,12 +90,15 @@ sources:
     domain: histology
     title: Junqueira's Basic Histology
     edition: "17"
-    publication_year: 2023
     role: core histology source
-    identity_status: verify_from_source
+    identity_status: verified
     source_map_state: unmapped
     match_patterns:
       - '(?i)junqueira'
+    notes:
+      - Source front matter/preface verifies Seventeenth Edition.
+      - Copyright notice is © 2024, 2021; publication year remains unset and is not inferred from copyright or filename.
+      - eBook ISBN 978-1-26-493214-6; print ISBN 978-1-26-493039-5.
 
   - logical_source_id: robbins-pathologic-basis-disease
     kind: textbook
