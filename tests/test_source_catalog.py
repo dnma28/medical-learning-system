@@ -50,9 +50,17 @@ def test_ortho_parts_map_to_magee():
 
 def test_katzung_parts_map_to_one_logical_source():
     catalog = SourceCatalog.load(CATALOG)
-    result = catalog.classify(metadata("Katzung_20.pdf"))
-    assert result.logical_source_id == "katzung-basic-clinical-pharmacology"
-    assert result.part_index == 20
+    first = catalog.classify(
+        metadata("Katzung_1.pdf", "1QyIOGcSYdr2mJFwosd8sWH9Z9TXCSxUi")
+    )
+    last = catalog.classify(metadata("Katzung_20.pdf"))
+    renamed = catalog.classify(
+        metadata("renamed physical source.pdf", "1QyIOGcSYdr2mJFwosd8sWH9Z9TXCSxUi")
+    )
+    assert first.logical_source_id == last.logical_source_id == renamed.logical_source_id
+    assert first.logical_source_id == "katzung-basic-clinical-pharmacology"
+    assert first.part_index == 1
+    assert last.part_index == 20
 
 
 def test_unknown_source_is_not_dropped():
