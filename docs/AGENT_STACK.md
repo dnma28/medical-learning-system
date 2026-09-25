@@ -149,7 +149,7 @@ When you open a checkout of this repository in Codex, its project-scoped
 - `implementation_engineer` — GPT-6 Sol, scoped code work.
 - `independent_reviewer` — GPT-6 Astra, read-only review.
 
-The project caps concurrent subagents at three. A profile's `sandbox_mode` is a default; Codex reapplies the parent session's active permission and sandbox choices when spawning children. Set the parent session to read-only before relying on read-only profiles, and keep implementation sessions on the required scoped permissions. Ask the coordinator to delegate separate issue scopes, then wait for the reviewer before merging. Example:
+The project caps concurrent subagents at three. A profile's `sandbox_mode` is a default; Codex reapplies the parent session's active permission and sandbox choices when spawning children. Set the parent session to read-only before relying on read-only profiles. `workspace-write` is not a per-path allowlist, so keep the Sol agent's issue/path scope explicit and review its diff. Ask the coordinator to delegate separate issue scopes, then wait for the reviewer before merging. Example:
 
 ```text
 Use source_evidence_worker to inspect the assigned source batch, implementation_engineer to handle issue #N, and independent_reviewer to review the resulting diff. Keep their file scopes separate and wait for all results.
