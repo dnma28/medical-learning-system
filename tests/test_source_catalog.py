@@ -105,3 +105,11 @@ def test_catalog_prefers_exact_drive_file_identity_when_available():
         metadata("renamed source.pdf", file_id="stable-file-id")
     )
     assert result.logical_source_id == "book-a"
+
+
+def test_junqueira_identity_uses_source_evidence_not_filename_year():
+    catalog = SourceCatalog.load(CATALOG)
+    source = catalog.get("junqueira-basic-histology")
+    assert source.edition == "17"
+    assert source.publication_year is None
+    assert source.identity_status == IdentityStatus.VERIFIED
