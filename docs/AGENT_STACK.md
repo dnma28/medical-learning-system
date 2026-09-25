@@ -139,3 +139,35 @@ workflows. GitHub Issues and PRs remain the work queue and review record
 described in [AI_WORK_QUEUE.md](AI_WORK_QUEUE.md). Any later graph that
 performs writes needs a scoped issue, explicit credentials, review gates,
 and a separate implementation.
+
+## Codex project agents
+
+When you open a checkout of this repository in Codex, its project-scoped
+`.codex/agents/` profiles are available when spawning subagents:
+
+- `source_evidence_worker` — GPT-6 Luna, read-only textbook evidence review.
+- `implementation_engineer` — GPT-6 Sol, scoped code work.
+- `independent_reviewer` — GPT-6 Astra, read-only review.
+
+The project caps concurrent subagents at three. A profile's `sandbox_mode` is a default; Codex reapplies the parent session's active permission and sandbox choices when spawning children. Set the parent session to read-only before relying on read-only profiles. `workspace-write` is not a per-path allowlist, so keep the Sol agent's issue/path scope explicit and review its diff. Ask the coordinator to delegate separate issue scopes, then wait for the reviewer before merging. Example:
+
+```text
+Use source_evidence_worker to inspect the assigned source batch, implementation_engineer to handle issue #N, and independent_reviewer to review the resulting diff. Keep their file scopes separate and wait for all results.
+```
+
+These profiles are instructions and model selections, not bundled model weights.
+Codex uses models available to the signed-in account and client; model access
+depends on rollout and plan. If a configured model is unavailable, edit that
+profile to a model your Codex client offers. Subagent work uses additional
+model/tool calls.
+
+Install the optional project libraries in the checkout's Python environment with:
+
+```bash
+python -m pip install -e '.[markitdown,langgraph]'
+```
+
+MarkItDown is called through the existing adapter. LangGraph is a library for
+Python workflows. Installing it does not connect it to Codex subagents or start
+an autonomous runner; any such bridge needs its own scoped implementation,
+credentials, and review gates.
