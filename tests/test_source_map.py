@@ -178,6 +178,60 @@ def test_source_map_rejects_missing_parent():
         )
 
 
+@pytest.mark.parametrize("container_kind", [StructureKind.PART, StructureKind.UNIT])
+def test_source_map_preserves_part_or_unit(container_kind):
+    source_map = LogicalSourceMap(
+        logical_source_id="book",
+        state=SourceMapState.TOC_MAPPED,
+        nodes=[
+            SourceMapNode(logical_source_id="book", node_id="book", kind=StructureKind.BOOK,
+                          title="Book", depth=0, order_index=0),
+            SourceMapNode(logical_source_id="book", node_id="container", parent_id="book",
+                          kind=container_kind, title="Source container", depth=1,
+                          order_index=1),
+            SourceMapNode(logical_source_id="book", node_id="chapter", parent_id="container",
+                          kind=StructureKind.CHAPTER, title="Chapter", depth=2, order_index=2),
+            SourceMapNode(logical_source_id="book", node_id="section", parent_id="chapter",
+                          kind=StructureKind.SECTION, title="Section", depth=3, order_index=3),
+            SourceMapNode(logical_source_id="book", node_id="subsection", parent_id="section",
+                          kind=StructureKind.SUBSECTION, title="Subsection", depth=4,
+                          order_index=4),
+        ],
+    )
+    assert source_map.nodes[1].kind == container_kind
+    assert all(node.learning_value is None for node in source_map.nodes)
+
+
+def test_source_map_rejects_unit_under_chapter_even_with_correct_depth():
+    with pytest.raises(ValueError, match="parent kind"):
+        LogicalSourceMap(
+            logical_source_id="book",
+            state=SourceMapState.TOC_MAPPED,
+            nodes=[
+                _node("book", 0),
+                _node("chapter", 1),
+                SourceMapNode(logical_source_id="book", node_id="unit", parent_id="chapter",
+                              kind=StructureKind.UNIT, title="Unit", depth=2, order_index=2),
+            ],
+        )
+
+
+def test_source_map_rejects_section_directly_beneath_part():
+    with pytest.raises(ValueError, match="parent kind"):
+        LogicalSourceMap(
+            logical_source_id="book",
+            state=SourceMapState.TOC_MAPPED,
+            nodes=[
+                _node("book", 0),
+                SourceMapNode(logical_source_id="book", node_id="part", parent_id="book",
+                              kind=StructureKind.PART, title="Part", depth=1, order_index=1),
+                SourceMapNode(logical_source_id="book", node_id="section", parent_id="part",
+                              kind=StructureKind.SECTION, title="Section", depth=2,
+                              order_index=2),
+            ],
+        )
+
+
 def test_completeness_reports_explicit_gaps_without_inference():
     source_map = LogicalSourceMap(
         logical_source_id="book",

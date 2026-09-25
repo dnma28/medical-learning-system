@@ -31,7 +31,8 @@ class SourceMapNode(BaseModel):
     page_end: int | None = Field(default=None, ge=1)
     source_anchor: dict[str, object] = Field(default_factory=dict)
 
-    learning_value: LearningValue = LearningValue.SUPPORTING
+    # Source structure is curriculum neutral until that decision is made.
+    learning_value: LearningValue | None = None
     freshness_required: bool = False
 
     @model_validator(mode="after")
@@ -51,10 +52,7 @@ class SourceMapNode(BaseModel):
             and self.page_end < self.page_start
         ):
             raise ValueError("page_end must be >= page_start")
-        if (
-            self.learning_value == LearningValue.CURRENT_CLINICAL_CHECK
-            and not self.freshness_required
-        ):
+        if self.learning_value == LearningValue.CURRENT_CLINICAL_CHECK and not self.freshness_required:
             raise ValueError(
                 "CURRENT_CLINICAL_CHECK nodes must require freshness verification"
             )
@@ -148,3 +146,16 @@ def validate_source_map(
             raise ValueError(f"invalid Source Map depth for {node.node_id}")
         if node.order_index <= parent.order_index:
             raise ValueError(f"child must follow parent for {node.node_id}")
+        allowed_parents = {
+            StructureKind.PART: {StructureKind.BOOK},
+            StructureKind.UNIT: {StructureKind.BOOK},
+            StructureKind.CHAPTER: {
+                StructureKind.BOOK, StructureKind.PART, StructureKind.UNIT
+            },
+            StructureKind.SECTION: {StructureKind.CHAPTER},
+            StructureKind.SUBSECTION: {StructureKind.SECTION},
+        }
+        # OTHER remains readable for legacy non-structural entries. It must
+        # never stand in for a Part or Unit in newly certified Source Maps.
+        if node.kind in allowed_parents and parent.kind not in allowed_parents[node.kind]:
+            raise ValueError(f"invalid Source Map parent kind for {node.node_id}")
