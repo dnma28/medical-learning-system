@@ -2,6 +2,7 @@ from .blueprint import (
     BlueprintStatus,
     Hoc90Blueprint,
     MasteryTarget,
+    StudyMode,
 )
 from .bootstrap import (
     BootstrapMode,
@@ -23,6 +24,7 @@ __all__ = [
     "BlueprintStatus",
     "Hoc90Blueprint",
     "MasteryTarget",
+    "StudyMode",
     "BootstrapMode",
     "BootstrapPlan",
     "Hoc90Command",

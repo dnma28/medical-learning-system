@@ -52,6 +52,7 @@ class RoutingContext(BaseModel):
     source_gap: bool = False
     source_anchor_available: bool = True
     learner_requested_reference_detail: bool = False
+    learner_requested_integration: bool = False
 
     freshness_required: bool = False
     freshness_verified: bool = False
@@ -147,6 +148,17 @@ class LearningRouter:
                 return_to_source_spine=context.source_spine,
             )
 
+        if context.learner_requested_integration:
+            return RoutingDecision(
+                action=AdaptiveAction.CROSS_BOOK_EXPANSION,
+                quality_mode=QualityMode.DEEP,
+                reason=(
+                    "The learner explicitly requested a bounded integrated "
+                    "cross-book study branch."
+                ),
+                return_to_source_spine=context.source_spine,
+            )
+
         if (
             context.current_learning_value == LearningValue.REFERENCE_ONLY
             and not context.learner_requested_reference_detail
@@ -191,6 +203,6 @@ class LearningRouter:
             or context.current_claim_is_time_sensitive_clinical
         ):
             return QualityMode.CRITICAL
-        if context.concept_is_complex:
+        if context.learner_requested_integration or context.concept_is_complex:
             return QualityMode.DEEP
         return QualityMode.FAST

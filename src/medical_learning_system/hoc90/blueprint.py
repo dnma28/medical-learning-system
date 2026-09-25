@@ -16,6 +16,11 @@ class BlueprintStatus(str, Enum):
     SUPERSEDED = "superseded"
 
 
+class StudyMode(str, Enum):
+    CHAPTER_SEQUENTIAL = "chapter_sequential"
+    INTEGRATED_ON_DEMAND = "integrated_on_demand"
+
+
 class MasteryTarget(BaseModel):
     concept_id: str = Field(min_length=1)
     target_level: str = Field(pattern=r"^M[0-7]$")
@@ -28,6 +33,8 @@ class Hoc90Blueprint(BaseModel):
     lesson_id: str = Field(min_length=1)
     status: BlueprintStatus = BlueprintStatus.DRAFT
     curriculum_position: str | None = None
+    study_mode: StudyMode = StudyMode.CHAPTER_SEQUENTIAL
+    integration_goal: str | None = None
 
     source_spine: list[SourceSpineRef] = Field(min_length=1)
 
@@ -82,6 +89,21 @@ class Hoc90Blueprint(BaseModel):
             ):
                 raise ValueError(
                     "return_to_source_spine must reference a source in source_spine"
+                )
+
+        if self.study_mode == StudyMode.INTEGRATED_ON_DEMAND:
+            logical_ids = {ref.logical_source_id for ref in self.source_spine}
+            if len(logical_ids) < 2:
+                raise ValueError(
+                    "integrated_on_demand requires at least two logical books"
+                )
+            if not self.integration_goal:
+                raise ValueError(
+                    "integrated_on_demand requires an explicit integration_goal"
+                )
+            if self.return_to_source_spine is None:
+                raise ValueError(
+                    "integrated_on_demand requires return_to_source_spine"
                 )
 
         return self
