@@ -153,7 +153,7 @@ def validate_source_map(
                 StructureKind.BOOK, StructureKind.PART, StructureKind.UNIT
             },
             StructureKind.SECTION: {StructureKind.CHAPTER},
-            StructureKind.SUBSECTION: {StructureKind.SECTION},
+            StructureKind.SUBSECTION: {StructureKind.SECTION, StructureKind.SUBSECTION},
         }
         # OTHER remains readable for legacy non-structural entries. It must
         # never stand in for a Part or Unit in newly certified Source Maps.
