@@ -232,6 +232,40 @@ def test_source_map_rejects_section_directly_beneath_part():
         )
 
 
+
+def test_nested_subsections_preserve_five_level_costanzo_heading():
+    nodes = [
+        SourceMapNode(logical_source_id="book", node_id="book", kind=StructureKind.BOOK,
+                      title="Book", depth=0, order_index=0),
+    ]
+    for i, (kind, parent) in enumerate([
+        (StructureKind.CHAPTER, "book"),
+        (StructureKind.SECTION, "heading-1"),
+        (StructureKind.SUBSECTION, "heading-2"),
+        (StructureKind.SUBSECTION, "heading-3"),
+        (StructureKind.SUBSECTION, "heading-4"),
+    ], start=1):
+        nodes.append(SourceMapNode(
+            logical_source_id="book", node_id=f"heading-{i}", parent_id=parent,
+            kind=kind, title=f"Original heading {i}", depth=i,
+            order_index=i, source_id="physical", page_start=14,
+            source_anchor={"scope": "heading_point_not_section_range"},
+        ))
+    source_map = LogicalSourceMap(logical_source_id="book",
+                                  state=SourceMapState.TOC_MAPPED, nodes=nodes)
+    assert source_map.nodes[-1].parent_id == "heading-4"
+    assert all(node.page_end is None for node in source_map.nodes)
+
+
+def test_subsection_still_rejects_chapter_parent():
+    with pytest.raises(ValueError, match="parent kind"):
+        LogicalSourceMap(logical_source_id="book", state=SourceMapState.TOC_MAPPED,
+                         nodes=[_node("book", 0), _node("chapter", 1),
+                                SourceMapNode(logical_source_id="book", node_id="sub",
+                                              parent_id="chapter", kind=StructureKind.SUBSECTION,
+                                              title="Invalid subsection", depth=2,
+                                              order_index=2)])
+
 def test_completeness_reports_explicit_gaps_without_inference():
     source_map = LogicalSourceMap(
         logical_source_id="book",
