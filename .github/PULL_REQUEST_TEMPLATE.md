@@ -8,7 +8,7 @@ Closes #<!-- issue number -->
 
 ## Verification
 
-<!-- Exact local checks and CI result. Explain any skipped checks. -->
+<!-- Exact local checks and CI result. Explain any skipped checks. Link a versioned evidence/draft manifest when applicable; do not paste source text. -->
 
 ## Review
 
