@@ -1,4 +1,4 @@
--- Run only inside BEGIN ... ROLLBACK after migration 0013.
+-- Run only inside BEGIN ... ROLLBACK after migration 20260925075830.
 -- Synthetic source identifiers and rows are never committed.
 do $test$
 declare
