@@ -64,3 +64,23 @@ Reconsider deferred/rejected tools only when a concrete missing capability appea
 - reconsider one specific agent-skill when an existing workflow repeatedly fails to cover that need;
 - reconsider WeKnora only if the project decides to replace, rather than complement, its custom RAG/backend architecture;
 - reconsider ECC/Orca only if the primary coding-agent architecture itself is intentionally replaced.
+
+
+## Codex extras requested on 2026-09-25
+
+These additions are agent-side tooling only. They do not enter the Python
+medical runtime and do not become medical knowledge sources.
+
+| Candidate | Upstream | Decision | Boundary |
+|---|---|---|---|
+| Matt Pocock skills | `mattpocock/skills` | **Install for Codex** | Install the bundle through the Agent Skills installer. It already includes `grill-me` and `to-prd`; avoid duplicate installations from similarly named repositories. |
+| Caveman | `JuliusBrussee/caveman` | **Install, explicit-only** | Useful for terse agent communication and compact review output. It must not remove evidence, paths, errors, commands, or medical provenance detail. |
+| Graphify | `Graphify-Labs/graphify` / PyPI `graphifyy` | **Install as optional graph tooling** | Use for local code/document graph exploration. It must remain separate from Source Maps and the Canonical Medical KG. |
+| GitNexus | `abhigyanpatwari/GitNexus` | **Install as Codex plugin** | Use for local code intelligence and impact analysis. Plugin hooks require explicit Codex trust. Re-evaluate licensing before any commercial deployment. |
+| grill-me | Included in `mattpocock/skills` | **No separate repo install** | Prevents duplicate skill names and instruction collisions. |
+| to-prd | Included in `mattpocock/skills` | **No separate repo install** | Prevents duplicate skill names and keeps issue-tracker setup in one bundle. |
+
+The installation entry point is `scripts/setup_codex_extras.ps1`. Graphify
+and GitNexus are deliberately not wired as simultaneous always-on graph
+engines: GitNexus is the default for code dependency/impact questions;
+Graphify is reserved for broader heterogeneous graph exploration.
