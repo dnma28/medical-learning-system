@@ -42,18 +42,18 @@ function Sync-PinnedRepo {
             Remove-Item -Recurse -Force $Destination
         }
 
-        git clone --filter=blob:none --no-checkout $Url $Destination
+        git clone --filter=blob:none --no-checkout $Url $Destination | Out-Host
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to clone $Name."
         }
     }
 
-    git -C $Destination fetch --force origin $Commit
+    git -C $Destination fetch --force origin $Commit | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to fetch pinned commit for $Name."
     }
 
-    git -C $Destination checkout --detach --force $Commit
+    git -C $Destination checkout --detach --force $Commit | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to checkout pinned commit for $Name."
     }
