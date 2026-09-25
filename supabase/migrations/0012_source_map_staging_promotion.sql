@@ -380,7 +380,8 @@ begin
                     and source_id is not null and source_anchor <> '{}'::jsonb)
     then v_structural := 'anchored';
     elsif exists (select 1 from public.mls_source_map_nodes
-                  where logical_source_id = p_logical_source_id)
+                  where logical_source_id = p_logical_source_id
+                    and kind <> 'book')
     then v_structural := 'mapped'; end if;
     select * into s from public.mls_source_map_staging
     where logical_source_id = p_logical_source_id
