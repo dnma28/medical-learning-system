@@ -1,4 +1,4 @@
--- Run only inside BEGIN ... ROLLBACK after migration 0012.
+-- Run only inside BEGIN ... ROLLBACK after migration 0013.
 -- Synthetic source identifiers and rows are never committed.
 do $test$
 declare
@@ -247,5 +247,79 @@ begin
     if not failed then raise exception 'SOURCE_GAP was certified'; end if;
     if public.mls_source_map_readiness(book)->>'audited_state' <> 'source_gap'
     then raise exception 'required SOURCE_GAP not surfaced in readiness'; end if;
+
+    -- True printed heading depth can exceed the original five-kind chain.
+    -- Keep every parent and a point locator without claiming page_end.
+    proposal := pg_catalog.jsonb_build_array(
+        proposal->0,
+        proposal->1,
+        proposal->1 || '{"node_id":"section","parent_id":"chapter-v2",
+                          "kind":"section","title":"Transport","depth":2,"order_index":2}'::jsonb,
+        proposal->1 || '{"node_id":"sub-a","parent_id":"section",
+                          "kind":"subsection","title":"Diffusion","depth":3,"order_index":3}'::jsonb,
+        proposal->1 || '{"node_id":"sub-b","parent_id":"sub-a",
+                          "kind":"subsection","title":"Nonelectrolytes","depth":4,"order_index":4}'::jsonb,
+        proposal->1 || '{"node_id":"sub-c","parent_id":"sub-b",
+                          "kind":"subsection","title":"Concentration gradient","depth":5,"order_index":5}'::jsonb);
+    insert into public.mls_source_map_staging(
+        logical_source_id,staging_version,proposal,toc_denominator,
+        extraction_version,source_manifest,audit_metadata,payload_sha256
+    ) values (
+        book,9,proposal,5,'test-parser-1',
+        pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+            'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+        qa,'ignored-and-recomputed');
+    certificate2 := public.mls_certify_source_map(book,9,
+        (select payload_sha256 from public.mls_source_map_staging
+         where logical_source_id=book and staging_version=9));
+    if public.mls_promote_source_map(book,9,certificate2,1) <> 2
+    then raise exception 'nested subsection promotion version mismatch'; end if;
+    if (select count(*) from public.mls_source_map_nodes
+           where logical_source_id=book) <> 6
+       or (select parent_id from public.mls_source_map_nodes
+           where logical_source_id=book and node_id='sub-c') <> 'sub-b'
+       or (select page_end from public.mls_source_map_nodes
+           where logical_source_id=book and node_id='sub-c') is not null
+       or public.mls_source_map_readiness(book)->>'ready_for_hoc90' <> 'true'
+    then raise exception 'nested subsection promotion/readback failed'; end if;
+
+    insert into public.mls_source_map_staging(
+        logical_source_id,staging_version,proposal,toc_denominator,
+        extraction_version,source_manifest,audit_metadata,payload_sha256
+    ) values (
+        book,10,pg_catalog.jsonb_set(proposal,'{5,parent_id}','"book"'),
+        5,'test-parser-1',
+        pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+            'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+        qa,'ignored-and-recomputed');
+    failed := false;
+    begin
+        perform public.mls_certify_source_map(book,10,
+            (select payload_sha256 from public.mls_source_map_staging
+             where logical_source_id=book and staging_version=10));
+    exception when others then failed := true; end;
+    if not failed then raise exception 'invalid deep parent was certified'; end if;
+
+    insert into public.mls_source_map_staging(
+        logical_source_id,staging_version,proposal,toc_denominator,
+        extraction_version,source_manifest,audit_metadata,payload_sha256
+    ) values (
+        book,11,pg_catalog.jsonb_set(proposal,'{5,page_end}','15'::jsonb),
+        5,'test-parser-1',
+        pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+            'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+        qa,'ignored-and-recomputed');
+    failed := false;
+    begin
+        perform public.mls_certify_source_map(book,11,
+            (select payload_sha256 from public.mls_source_map_staging
+             where logical_source_id=book and staging_version=11));
+    exception when others then failed := true; end;
+    if not failed then raise exception 'point locator with page_end was certified'; end if;
+    if (select source_map_version from public.mls_logical_sources
+        where logical_source_id=book) <> 2
+       or (select count(*) from public.mls_source_map_nodes
+           where logical_source_id=book) <> 6
+    then raise exception 'failed staging changed runtime map/version'; end if;
 end;
 $test$;
