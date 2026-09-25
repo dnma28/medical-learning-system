@@ -39,4 +39,8 @@ def test_docs_only_and_source_migration_gates():
     assert any("Gate evidence" in error for error in module.validate(
         _COMPLETE.split("## Gate evidence")[0], ["supabase/migrations/0013.sql"]
     ))
+    contract = ["docs/SOURCE_MAP_STAGING_PROMOTION.md"]
+    missing = module.validate(_COMPLETE.split("## Gate evidence")[0], contract)
+    assert any("Risk and provenance" in error for error in missing)
+    assert any("Gate evidence" in error for error in missing)
     assert any("No changed files" in error for error in module.validate(_COMPLETE, []))
