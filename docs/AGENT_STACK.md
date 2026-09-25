@@ -117,3 +117,7 @@ codex plugin marketplace add alibaba/open-code-review
 Then open `/plugins`, install and enable **Open Code Review**, and start a new task. The plugin calls the local OCR CLI. Do not configure a second LLM provider unless standalone OCR-managed review is actually needed.
 
 See `docs/THIRD_PARTY_TOOL_EVALUATION.md` for why the other candidate repositories were not installed.
+
+## Multiple AI sessions
+
+Use [AI_WORK_QUEUE.md](AI_WORK_QUEUE.md) for bounded issue claims, handoffs, independent review and change-specific gates. GitHub Issues and PRs carry durable state; a ChatGPT session ends when its turn ends.
