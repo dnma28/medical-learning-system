@@ -4,6 +4,7 @@ from medical_learning_system.hoc90.blueprint import (
     BlueprintStatus,
     Hoc90Blueprint,
     MasteryTarget,
+    StudyMode,
 )
 from medical_learning_system.hoc90.bootstrap import (
     BootstrapMode,
@@ -263,3 +264,60 @@ def test_blueprint_and_structured_source_spine_persist():
     store.save_session(saved_session)
     raw = store.client.tables["mls_learning_sessions"][0]
     assert raw["source_spine"][0]["logical_source_id"] == "costanzo-physiology"
+
+
+def test_integrated_blueprint_requires_multiple_logical_books():
+    with pytest.raises(ValueError, match="at least two logical books"):
+        blueprint(
+            study_mode=StudyMode.INTEGRATED_ON_DEMAND,
+            integration_goal="Connect anatomy to physiology and rehabilitation.",
+        )
+
+
+def test_integrated_blueprint_preserves_primary_source_return_target():
+    support = source_ref(
+        logical_source_id="junqueira-basic-histology",
+        source_map_node_id="ch10-muscle-tissue",
+        source_id="junqueira--physical",
+        source_anchor={"page_start": 210},
+        learning_value=LearningValue.SUPPORTING,
+    )
+    plan = blueprint(
+        study_mode=StudyMode.INTEGRATED_ON_DEMAND,
+        integration_goal="Explain muscle from tissue structure to function.",
+        source_spine=[source_ref(), support],
+    )
+    assert plan.primary_source.logical_source_id == "costanzo-physiology"
+    assert plan.return_to_source_spine == (
+        "costanzo-physiology:ch1-membrane-potential"
+    )
+
+
+def test_router_opens_integration_only_when_learner_requests_it():
+    decision = LearningRouter().route_next(
+        RoutingContext(
+            source_spine="moore:hip-joint",
+            learner_requested_integration=True,
+        )
+    )
+    assert decision.action == AdaptiveAction.CROSS_BOOK_EXPANSION
+    assert decision.quality_mode == QualityMode.DEEP
+    assert decision.return_to_source_spine == "moore:hip-joint"
+
+
+def test_router_keeps_sequential_chapter_mode_by_default():
+    decision = LearningRouter().route_next(
+        RoutingContext(source_spine="moore:hip-joint")
+    )
+    assert decision.action == AdaptiveAction.CONTINUE_SOURCE_SPINE
+
+
+def test_source_recovery_still_precedes_requested_integration():
+    decision = LearningRouter().route_next(
+        RoutingContext(
+            source_spine="moore:hip-joint",
+            learner_requested_integration=True,
+            source_gap=True,
+        )
+    )
+    assert decision.action == AdaptiveAction.SOURCE_RECOVERY
