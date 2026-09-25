@@ -8,6 +8,8 @@ declare
     extraction_hash text := repeat('b',64);
     qa jsonb := '{"scope":"full_book","reviewer_id":"test-reviewer",
         "qa_run_id":"test-qa-run",
+        "required_review_required":0,"required_source_gap":0,
+        "unclassified_observations":0,
         "toc_reconciliation_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "toc_evidence":{"source_id":"__source_map_contract_physical__",
             "locator":"physical PDF page 1",
