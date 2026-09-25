@@ -180,18 +180,19 @@ The user-requested Codex extras are installed outside the medical runtime throug
 
 Pinned setup:
 
-- **Matt Pocock skills** — installed with `skills@1.7.0` from `mattpocock/skills`.
-  The bundle already contains `grill-me`, `to-prd`, and
+- **Matt Pocock skills** — installed with `skills@1.7.0` from `mattpocock/skills`
+  at commit `c55ee46073ed923f86ce59a5eb3b6d895095d1b7`. The bundle already contains
+  `grill-me`, `to-prd`, and
   `setup-matt-pocock-skills`; do not install duplicate `grill-me` or
   `to-prd` repositories.
-- **Caveman** — installed from `JuliusBrussee/caveman` as Codex skills.
-  Use it explicitly; it must not compress away provenance, validation details,
+- **Caveman** — installed from `JuliusBrussee/caveman` at commit
+  `2fd153c67988e980fb0b2455c90832159a6a5a25` as Codex skills. Use it explicitly; it must not compress away provenance, validation details,
   or medical-learning invariants.
-- **Graphify 0.9.67** — installs the `graphifyy` CLI plus the `graphify`
-  Codex skill. It is a code/document exploration graph, not the Canonical
+- **Graphify 0.9.67** — installs the pinned `graphifyy` CLI plus the `graphify`
+  Codex skill from commit `8e09034743280ecc5ff2201b27c0ccae31f61966`. It is a code/document exploration graph, not the Canonical
   Medical KG and not a substitute for Source Maps or textbook evidence.
 - **GitNexus 1.6.12** — installed as the upstream Codex plugin from
-  `abhigyanpatwari/GitNexus`. Its hooks remain untrusted until the user
+  `abhigyanpatwari/GitNexus`, with the marketplace pinned to tag `v1.6.12`. Its hooks remain untrusted until the user
   explicitly approves them in Codex.
 
 Run on the Codex machine:
