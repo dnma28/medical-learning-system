@@ -4,7 +4,7 @@ Migration `0012_source_map_staging_promotion.sql` adds explicit `part` and
 `unit` kinds. Existing `book/chapter/section/subsection/other` remain valid.
 Part and Unit are sibling source labels directly under Book; Chapter may sit
 under either or directly under Book. The strict runtime hierarchy is
-Book → (Part or Unit) → Chapter → Section → Subsection. Drafts may leave a
+Book → (Part or Unit) → Chapter → Section → Subsection; a source-backed\nSubsection can contain deeper Subsections without losing its parent. Drafts may leave a
 parent, kind, locator, source, or confidence unresolved. Do not infer Part or
 Unit from bookmark depth.
 
