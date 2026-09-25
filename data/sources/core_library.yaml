@@ -173,13 +173,16 @@ sources:
     role: core pharmacology source with current-validity gate for clinical claims
     identity_status: verify_from_source
     source_map_state: unmapped
+    provider_file_ids:
+      - 1QyIOGcSYdr2mJFwosd8sWH9Z9TXCSxUi
     match_patterns:
       - '(?i)(^katzung_\d+\.pdf$|katzung.*basic.*clinical.*pharmacology)'
     part_pattern: '(?i)^katzung_(\d+)\.pdf$'
     notes:
-      - Current direct-child Drive inventory contains Katzung_2.pdf through Katzung_20.pdf.
-      - Missing filename Katzung_1.pdf does not by itself prove missing source content.
-      - Existing KG metadata reports 16e; verify against the source before canonicalizing edition.
+      - Direct-child Drive inventory contains Katzung_1.pdf through Katzung_20.pdf; part 1 is bound by exact Drive ID.
+      - Part 1 SHA-256 47148b67d513f9a976ba527cf0e9407232a8bce762ac2a9382250d9d539e18b6; body pp. 1–56 contain Chapters 1–3.
+      - Part 2 begins at printed page 57, Chapter 4; source-page evidence overrides filename numbering.
+      - Existing KG metadata reports 16e; verify across the source set before canonicalizing edition.
 
   - logical_source_id: yanoff-duker-ophthalmology
     kind: textbook
