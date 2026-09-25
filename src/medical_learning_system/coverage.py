@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, model_validator
 
 class StructureKind(str, Enum):
     BOOK = "book"
+    PART = "part"
+    UNIT = "unit"
     CHAPTER = "chapter"
     SECTION = "section"
     SUBSECTION = "subsection"
