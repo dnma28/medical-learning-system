@@ -211,5 +211,41 @@ begin
              where logical_source_id=book and staging_version=6));
     exception when others then failed := true; end;
     if not failed then raise exception 'unbound physical source was certified'; end if;
+
+    insert into public.mls_source_map_staging(
+        logical_source_id,staging_version,proposal,toc_denominator,
+        extraction_version,source_manifest,audit_metadata,payload_sha256
+    ) values (
+        book,7,pg_catalog.jsonb_set(proposal,'{1,order_index}','0'::jsonb),
+        1,'test-parser-1',
+        pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+            'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+        qa,'ignored-and-recomputed');
+    failed := false;
+    begin
+        perform public.mls_certify_source_map(book,7,
+            (select payload_sha256 from public.mls_source_map_staging
+             where logical_source_id=book and staging_version=7));
+    exception when others then failed := true; end;
+    if not failed then raise exception 'duplicate order was certified'; end if;
+
+    insert into public.mls_source_map_staging(
+        logical_source_id,staging_version,proposal,toc_denominator,
+        extraction_version,source_manifest,audit_metadata,payload_sha256
+    ) values (
+        book,8,pg_catalog.jsonb_set(proposal,'{1,status}','"source_gap"'),
+        1,'test-parser-1',
+        pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+            'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+        qa,'ignored-and-recomputed');
+    failed := false;
+    begin
+        perform public.mls_certify_source_map(book,8,
+            (select payload_sha256 from public.mls_source_map_staging
+             where logical_source_id=book and staging_version=8));
+    exception when others then failed := true; end;
+    if not failed then raise exception 'SOURCE_GAP was certified'; end if;
+    if public.mls_source_map_readiness(book)->>'audited_state' <> 'source_gap'
+    then raise exception 'required SOURCE_GAP not surfaced in readiness'; end if;
 end;
 $test$;
