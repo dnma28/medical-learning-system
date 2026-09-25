@@ -219,3 +219,12 @@ Do not run Graphify and GitNexus automatically on every task.
 
 Generated local graph state belongs outside Git. `graphify-out/` and
 `.gitnexus/` are ignored.
+
+
+## Cursor + Codex parallel clients
+
+Cursor is supported as an interactive implementation client alongside Codex. Cursor does not replace the shell, GitHub, CI, tests, or repository provenance rules. The repository-wide Cursor rule is `.cursor/rules/medical-learning-system.mdc`; the operating procedure is [CURSOR_CODEX_WORKFLOW.md](CURSOR_CODEX_WORKFLOW.md).
+
+Use one active implementation owner per issue. When Cursor and Codex run concurrently, use separate branches/worktrees and do not let both clients write to the same branch. Handoffs should happen through committed changes plus GitHub issue/PR state.
+
+Codex-specific project agents, skills, and plugins remain Codex-specific unless an upstream tool independently supports Cursor. Both clients must obey `AGENTS.md`, and neither may treat Graphify/GitNexus output as medical evidence or canonical project truth.
