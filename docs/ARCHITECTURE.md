@@ -2,53 +2,42 @@
 
 ## Responsibility boundaries
 
-```text
-Google Drive
-  original textbooks + human-readable Source Maps/Curriculum
-        |
-        v
-Parser / RAG / evidence alignment
-        |
-        +-----------------------------+
-        |                             |
-        v                             v
-Candidate / Evidence Graph       Source coverage
-        |
- claim + relation audit
-        |
-        v
-Canonical Medical KG
-        |
-        +-----------------------------+
-        |                             |
-        v                             v
-Learning Router               Supabase runtime state
-        |                      - Student Model M0-M7
-        |                      - Error Graph
-        |                      - Skill Tree
-        |                      - HỌC90 sessions/events
-        |                      - active blueprint
-        v
-Adaptive HỌC90
-        |
-        v
-ChatGPT teaching interface
+```mermaid
+flowchart TD
+    D["Drive textbooks + human-readable maps/curriculum"] --> P["Parser / evidence alignment"]
+    D --> S["Source Map proposal + human review"]
+    P --> S
+    P --> C["Candidate / Evidence Graph"]
+    S --> V["TOC audit + certificate + promotion"]
+    V --> M["Verified Source Map"]
+    C --> A["Claim / relation audit"]
+    A --> K["Canonical Medical KG"]
+    M --> R["Learning Router"]
+    K --> R
+    U["Supabase learner state"] --> R
+    R --> H["HỌC90 in ChatGPT"]
+    H --> L["Learner responses"]
+    L --> E["Append-only learning events"]
+    E --> U
 ```
+
+Parser extraction and human-reviewed Drive documents both inform Source Map proposals. The textbook and audited TOC control identity, hierarchy and locators. A proposal remains staging until certified and promoted; a human-readable Drive map may be a draft or a mirror of a reviewed map. The KG and verified Source Map inform routing, while learner responses generate the append-only events from which learner aggregates are updated.
 
 ## Canonical ownership
 
 - **Google Drive** owns original textbook binaries and human-readable study artifacts.
 - **GitHub** owns executable machine contracts, routing logic, migrations, tests, retrieval code, and validation.
-- **Supabase** owns live learner/runtime state.
+- **Supabase** stores live learner/runtime state and backend-only source/evidence, audit, and Source Map staging/runtime records; it is not an automatic KG-to-mastery pipeline.
 - **Canonical Medical KG** owns validated medical concepts/relations, not learner state.
 - **Candidate/Evidence Graph** owns extracted/proposed evidence before promotion.
 
 ## Learning-state separation
 
-Two dimensions must never be collapsed:
+Three distinct measures must never be collapsed:
 
-1. **Source coverage** — whether a book/chapter/section/subsection has been mapped or studied.
-2. **Concept mastery** — what the learner can independently retrieve, explain, transfer, and retain.
+1. **Structural Source Map completeness** — whether the required book/TOC nodes, hierarchy and locators have been verified.
+2. **Learner source coverage** — which book/TOC items the learner has studied (`mls_source_coverage_state`).
+3. **Concept mastery** — what the learner can independently retrieve, explain, transfer, and retain (`mls_concept_mastery`).
 
 `mls_coverage` from older migrations is preserved for compatibility. v0.9 adds explicit runtime tables rather than silently changing old semantics.
 
@@ -66,7 +55,7 @@ At session start:
 
 Within a session, bounded adaptations may occur automatically: prerequisite repair, hint depth, retrieval selection, cross-book support, and transfer difficulty. Large curriculum changes require learner approval.
 
-Meaningful learner responses are persisted immediately as append-only learning events. Aggregate state can then be updated without losing the original evidence trail.
+Meaningful learner responses are persisted immediately as append-only learning events. Aggregate learner state is updated from those events without losing the original evidence trail. KG claims supply teaching content and prerequisites; they do not create observed errors or raise mastery.
 
 ## Retrieval rule
 
@@ -92,9 +81,9 @@ answer
 
 Textbook fidelity and present-day clinical validity are separate. Dose, threshold, regimen, guideline, contraindication, monitoring, and similar time-sensitive claims require current verification before being presented as current standard.
 
-## Security
+## Storage and security
 
-Supabase and Google Drive backend credentials remain server-side. Raw copyrighted textbook binaries and extracted copyrighted corpora are not committed to Git.
+Textbook binaries stay in Drive. Parsed evidence and Source Map proposals/runtime nodes have backend-only Supabase tables, with SQLite as a local development/test implementation. Claim and relation audit records also have Supabase tables. Early Candidate/Canonical Graph JSONL exports use a caller-supplied local path; no durable production graph store or access/retention policy has yet been specified. Textbook-derived exports must stay in private non-Git storage such as ignored `data/local/`. Supabase and Drive credentials remain server-side. Raw copyrighted binaries and extracted corpora are not committed to Git.
 
 
 ## Logical Book Registry and Source Maps
