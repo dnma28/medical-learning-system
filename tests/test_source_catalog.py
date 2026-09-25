@@ -113,3 +113,12 @@ def test_junqueira_identity_uses_source_evidence_not_filename_year():
     assert source.edition == "17"
     assert source.publication_year is None
     assert source.identity_status == IdentityStatus.VERIFIED
+
+
+def test_kandel_identity_uses_registered_drive_source():
+    catalog = SourceCatalog.load(CATALOG)
+    source = catalog.get("kandel-principles-neural-science")
+    assert source.edition == "6"
+    assert source.publication_year is None
+    assert source.identity_status == IdentityStatus.VERIFIED
+    assert "1Gb8RpPcZBq8ThMnbEnyFfXl2ck9-cpYm" in source.provider_file_ids
