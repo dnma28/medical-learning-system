@@ -135,6 +135,7 @@ Optional stacks remain separated from the core runtime:
 - `.[rag]` — RAG-Anything path
 - `.[docling]` — Docling parser path
 - `.[markitdown]` — MarkItDown fallback for Office/HTML/EPUB/text documents; PDF remains native/Docling by default
+- `.[langgraph]` — optional LangGraph orchestration library; no agent runner is started by installation
 - `.[pdf-native]` — native PDF text/outline helpers
 - `.[supabase]` — Supabase backend
 - `.[eval]` — Ragas evaluation
