@@ -6,48 +6,37 @@ Source-grounded, adaptive medical learning backend for the **Học nền tảng 
 
 v0.10.1 makes HỌC90 source-aware on top of the v0.10 Book Registry and logical-book Source Map layer:
 
-- **Google Drive** holds original textbooks and human-readable source maps/curriculum.
+- **Google Drive** holds original textbooks, learner-approved curriculum, and human-readable Source Map drafts or reviewed mirrors. These maps are reconciled against the textbooks; their presence in Drive does not certify completeness.
 - **GitHub** holds machine contracts, retrieval, validation, routing, tests, and migrations.
 - **Supabase** is the primary runtime state store for learner state and HỌC90 sessions.
 - **ChatGPT** is the teaching interface.
 - **Canonical Medical Knowledge** remains separate from Candidate/Evidence data and from learner state.
 - **Logical Book Registry** separates one book from its one-or-many physical Drive files.
-- **Source Maps** preserve full book/TOC navigation without equating coverage with mastery.
+- **Source Maps** preserve the book/TOC structure and verified locators. Their structural completeness is distinct from each learner's study coverage and concept mastery.
 - **HỌC90 blueprints/sessions** carry structured logical-book, Source Map, physical-source and freshness references.
 
 ## Architecture
 
-```text
-Google Drive textbooks
-        |
-        v
-Parser / RAG / evidence alignment
-        |
-        +----------------------+
-        |                      |
-        v                      v
-Candidate/Evidence Graph   Source Maps / coverage
-        |
-   audit / provenance gates
-        |
-        v
-Canonical Medical KG
-        |
-        +----------------------+
-        |                      |
-        v                      v
-Learning Router          Supabase learner runtime
-        |                 - concept mastery M0-M7
-        |                 - learner errors
-        |                 - HỌC90 sessions/checkpoints
-        |                 - learning events
-        |                 - skill-tree state
-        v
-      HỌC90
-        |
-        v
-     ChatGPT
+```mermaid
+flowchart TD
+    D["Drive textbooks + human-readable maps/curriculum"] --> P["Parser / evidence alignment"]
+    D --> S["Source Map proposal + human review"]
+    P --> S
+    P --> C["Candidate / Evidence Graph"]
+    S --> V["TOC audit + certificate + promotion"]
+    V --> M["Verified Source Map"]
+    C --> A["Claim / relation audit"]
+    A --> K["Canonical Medical KG"]
+    M --> R["Learning Router"]
+    K --> R
+    U["Supabase learner state"] --> R
+    R --> H["HỌC90 in ChatGPT"]
+    H --> L["Learner responses"]
+    L --> E["Append-only learning events"]
+    E --> U
 ```
+
+Parser output proposes Source Map structure and locators; a human-readable Drive map can also supply or receive corrections. The original textbook and audited TOC are the authority. Only a certified and promoted map becomes runtime navigation. The Router reads the verified map, validated medical knowledge, and learner state. Learner responses produce events; aggregates such as mastery and observed errors are updated from those events, never from the KG.
 
 ## Core invariants
 
@@ -96,7 +85,7 @@ Migration `0009_adaptive_learning_runtime.sql` adds backend-only tables for:
 - skill nodes and learner skill state;
 - active HỌC90 blueprints.
 
-The legacy `mls_coverage` table is not silently repurposed because earlier versions mixed book coverage terminology with learner mastery. v0.9 introduces an explicit source-coverage table while keeping concept mastery separate.
+The legacy `mls_coverage` table is not silently repurposed because earlier versions mixed book coverage terminology with learner mastery. v0.9 introduces `mls_source_coverage_state` for an individual learner's progress. Source Map completeness instead measures whether required TOC nodes and locators have been verified for a book; neither measure implies `mls_concept_mastery`.
 
 ## Retrieval and evidence
 
@@ -134,9 +123,9 @@ Optional stacks remain separated from the core runtime:
 
 - `.[rag]` — RAG-Anything path
 - `.[docling]` — Docling parser path
-- `.[markitdown]` — MarkItDown fallback for Office/HTML/EPUB/text documents; PDF remains native/Docling by default
+- `.[markitdown]` — MarkItDown fallback for Office/HTML/EPUB/text documents; PDF uses the native path when `.[pdf-native]` is installed, or Docling when `.[docling]` is installed
 - `.[langgraph]` — optional LangGraph orchestration library; no agent runner is started by installation
-- `.[pdf-native]` — native PDF text/outline helpers
+- `.[pdf-native]` — optional native PDF text/outline helpers; install this extra to use that path
 - `.[supabase]` — Supabase backend
 - `.[eval]` — Ragas evaluation
 
@@ -152,6 +141,10 @@ See:
 - `docs/V0_9_ADAPTIVE_RUNTIME.md`
 - `docs/V0_10_SOURCE_REGISTRY.md`
 - `docs/V0_10_1_SOURCE_AWARE_HOC90.md`
+
+## Evidence and graph storage
+
+Drive stores textbook binaries. The backend stores parsed evidence blocks and Source Map staging/runtime records in restricted Supabase tables; local SQLite is used for development and tests. Claim and relation audit records also have Supabase tables. The early Candidate/Canonical Graph exporter writes JSONL to a caller-supplied local path; a durable production graph store and its access/retention policy are still unspecified. Keep any graph export with textbook-derived content in private non-Git storage such as ignored `data/local/`; Git contains schemas and code, not those exports. Do not treat a staging Source Map as certified runtime data.
 
 ## Copyright and secrets
 
