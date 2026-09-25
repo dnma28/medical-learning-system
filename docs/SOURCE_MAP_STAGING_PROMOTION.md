@@ -25,8 +25,10 @@ Unit from bookmark depth.
   evidence, a reviewer and QA run, TOC reconciliation digest, all six QA flags,
   matching count of required node identities, valid tree, source bindings,
   current physical SHA-256, extraction fingerprints/versions and verified
-  heading points or verified ranges. Every staged node must be required and
-  verified for this full-book certificate. The certificate records the exact
+  heading points or verified ranges. The audit metadata must attest zero
+  required REVIEW_REQUIRED/SOURCE_GAP cases and zero unclassified outline
+  observations; staged node issue lists must be empty. Every staged node must
+  be required and verified for this full-book certificate. The certificate records the exact
   immutable staging digest and audit metadata. These QA fields are an
   **attestation based on source review**, not a way to manufacture missing
   textbook evidence. Evidence and denominator must be independently audited.
