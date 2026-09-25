@@ -171,3 +171,51 @@ MarkItDown is called through the existing adapter. LangGraph is a library for
 Python workflows. Installing it does not connect it to Codex subagents or start
 an autonomous runner; any such bridge needs its own scoped implementation,
 credentials, and review gates.
+
+
+## Optional Codex extras — 2026-09-25
+
+The user-requested Codex extras are installed outside the medical runtime through
+`scripts/setup_codex_extras.ps1`.
+
+Pinned setup:
+
+- **Matt Pocock skills** — installed with `skills@1.7.0` from `mattpocock/skills`
+  at commit `c55ee46073ed923f86ce59a5eb3b6d895095d1b7`. The bundle already contains
+  `grill-me`, `to-prd`, and
+  `setup-matt-pocock-skills`; do not install duplicate `grill-me` or
+  `to-prd` repositories.
+- **Caveman** — installed from `JuliusBrussee/caveman` at commit
+  `2fd153c67988e980fb0b2455c90832159a6a5a25` as Codex skills. Use it explicitly; it must not compress away provenance, validation details,
+  or medical-learning invariants.
+- **Graphify 0.9.67** — installs the pinned `graphifyy` CLI plus the `graphify`
+  Codex skill from commit `8e09034743280ecc5ff2201b27c0ccae31f61966`. It is a code/document exploration graph, not the Canonical
+  Medical KG and not a substitute for Source Maps or textbook evidence.
+- **GitNexus 1.6.12** — installed as the upstream Codex plugin from
+  `abhigyanpatwari/GitNexus`, with the marketplace pinned to tag `v1.6.12`. Its hooks remain untrusted until the user
+  explicitly approves them in Codex.
+
+Run on the Codex machine:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_codex_extras.ps1
+```
+
+Then restart Codex. Run `$setup-matt-pocock-skills` once and select GitHub as
+the issue tracker for this repository. Verify `$grill-me`, `$to-prd`,
+`$caveman`, and `$graphify`. Open `/plugins` to verify GitNexus, and
+review/approve its hooks in `/hooks`.
+
+### Graph tool routing
+
+Do not run Graphify and GitNexus automatically on every task.
+
+- Prefer **GitNexus** for code dependency tracing, execution-flow discovery,
+  refactor blast-radius analysis, and code review context.
+- Prefer **Graphify** for broader graph exploration across code plus project
+  documents or other heterogeneous local material.
+- Neither graph may override repository source files, tests, migrations,
+  Source Maps, Supabase state, or medical provenance rules.
+
+Generated local graph state belongs outside Git. `graphify-out/` and
+`.gitnexus/` are ignored.
