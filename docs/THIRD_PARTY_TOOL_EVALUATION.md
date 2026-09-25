@@ -73,10 +73,10 @@ medical runtime and do not become medical knowledge sources.
 
 | Candidate | Upstream | Decision | Boundary |
 |---|---|---|---|
-| Matt Pocock skills | `mattpocock/skills` | **Install for Codex** | Install the bundle through the Agent Skills installer. It already includes `grill-me` and `to-prd`; avoid duplicate installations from similarly named repositories. |
-| Caveman | `JuliusBrussee/caveman` | **Install, explicit-only** | Useful for terse agent communication and compact review output. It must not remove evidence, paths, errors, commands, or medical provenance detail. |
-| Graphify | `Graphify-Labs/graphify` / PyPI `graphifyy` | **Install as optional graph tooling** | Use for local code/document graph exploration. It must remain separate from Source Maps and the Canonical Medical KG. |
-| GitNexus | `abhigyanpatwari/GitNexus` | **Install as Codex plugin** | Use for local code intelligence and impact analysis. Plugin hooks require explicit Codex trust. Re-evaluate licensing before any commercial deployment. |
+| Matt Pocock skills | `mattpocock/skills` @ `c55ee46073ed923f86ce59a5eb3b6d895095d1b7` | **Install for Codex** | Install the pinned bundle through the Agent Skills installer. It already includes `grill-me` and `to-prd`; avoid duplicate installations from similarly named repositories. |
+| Caveman | `JuliusBrussee/caveman` @ `2fd153c67988e980fb0b2455c90832159a6a5a25` | **Install, explicit-only** | Useful for terse agent communication and compact review output. It must not remove evidence, paths, errors, commands, or medical provenance detail. |
+| Graphify | `Graphify-Labs/graphify` @ `8e09034743280ecc5ff2201b27c0ccae31f61966` / PyPI `graphifyy==0.9.67` | **Install as optional graph tooling** | Use for local code/document graph exploration. It must remain separate from Source Maps and the Canonical Medical KG. |
+| GitNexus | `abhigyanpatwari/GitNexus` @ `v1.6.12` | **Install as Codex plugin** | Use for local code intelligence and impact analysis. Plugin hooks require explicit Codex trust. Re-evaluate licensing before any commercial deployment. |
 | grill-me | Included in `mattpocock/skills` | **No separate repo install** | Prevents duplicate skill names and instruction collisions. |
 | to-prd | Included in `mattpocock/skills` | **No separate repo install** | Prevents duplicate skill names and keeps issue-tracker setup in one bundle. |
 
