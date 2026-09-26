@@ -42,12 +42,17 @@ sources:
     kind: textbook
     domain: neuroscience
     title: Principles of Neural Science
+    edition: "6"
     role: core neuroscience source
-    identity_status: verify_from_source
+    identity_status: verified
     source_map_state: deep_anchored
     match_patterns:
       - '(?i)principles.*neural.*scien'
     notes:
+      - Registered Drive source verified from internal title/copyright pages as Sixth Edition.
+      - eBook ISBN 978-1-25-964224-1; print ISBN 978-1-25-964223-4.
+      - Copyright notice is © 2021; publication year remains unset and is not inferred from copyright.
+      - Registered Drive raw SHA-256: d7a109d665f0da52aa0e8bf15bddb4cfe288cf466a1dba3958b2f164b43f3cd0.
       - Existing deep-extraction checkpoint must be normalized into one book-level Source Map.
 
   - logical_source_id: stryer-biochemistry
