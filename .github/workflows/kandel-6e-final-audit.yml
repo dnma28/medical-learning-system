@@ -1,0 +1,51 @@
+name: Kandel 6e final source audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/source_audits/audit_kandel6e.py"
+      - ".github/workflows/kandel-6e-final-audit.yml"
+  pull_request:
+    paths:
+      - "scripts/source_audits/audit_kandel6e.py"
+      - ".github/workflows/kandel-6e-final-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deterministic PDF tooling
+        run: |
+          python -m pip install --disable-pip-version-check \
+            "PyMuPDF==1.26.6" \
+            "gdown==5.2.0"
+
+      - name: Download exact registered Kandel 6e source
+        run: |
+          gdown --id 1Gb8RpPcZBq8ThMnbEnyFfXl2ck9-cpYm -O kandel.pdf
+          test "$(stat -c%s kandel.pdf)" = "211983909"
+          echo "d7a109d665f0da52aa0e8bf15bddb4cfe288cf466a1dba3958b2f164b43f3cd0  kandel.pdf" | sha256sum -c -
+
+      - name: Execute deterministic audit
+        run: |
+          python scripts/source_audits/audit_kandel6e.py kandel.pdf
+
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: kandel-6e-final-source-audit
+          path: |
+            kandel_6e_audit_summary.json
+            kandel_6e_exception_ledger.json
+          if-no-files-found: error
+          retention-days: 14
