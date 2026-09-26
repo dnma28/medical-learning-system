@@ -210,7 +210,7 @@ def reconstruct(academic: list[list]):
     return nodes, supplements
 
 
-def title_matches_page(doc, node):
+def title_matches_page(doc, node, printed_contents_match=False):
     page1 = node["native_page"]
     offsets = [0, 1, 2] if node["kind"] == "part" else [0]
     title_norm = node["title_norm"]
@@ -221,6 +221,15 @@ def title_matches_page(doc, node):
         page_norm = norm(doc[p1 - 1].get_text("text"))
         if title_norm and title_norm in page_norm:
             return True, p1, "exact_norm"
+
+    if node["kind"] == "part" and printed_contents_match:
+        m = PART_RE.match(node["title"])
+        if m:
+            marker = norm("Part " + m.group(1))
+            native_norm = norm(doc[page1 - 1].get_text("text"))
+            if marker and marker in native_norm:
+                return True, page1, "part_marker_plus_printed_contents"
+
     return False, page1, None
 
 
@@ -260,7 +269,62 @@ def collect_heading_signatures(doc, nodes, locator_results):
     return valid, sig_counts, sig_by_level
 
 
-def omission_scan(doc, nodes, valid_signatures, first_page1, last_page1):
+def known_heading_placements(doc, nodes, locator_results, valid_signatures):
+    placements = []
+    for node, loc in zip(nodes, locator_results):
+        if not loc["matched"]:
+            continue
+        page1 = loc["resolved_page"]
+        n = node["title_norm"]
+        page = doc[page1 - 1]
+        best = None
+        for cluster in iter_line_clusters(page, valid_signatures):
+            cn = cluster["norm"]
+            strong = (
+                cn == n
+                or (n in cn and len(n) / max(1, len(cn)) >= 0.72)
+                or (cn in n and len(cn) / max(1, len(n)) >= 0.72)
+            )
+            if strong:
+                best = cluster
+                break
+        if best is not None:
+            placements.append(
+                {
+                    "index": node["index"],
+                    "page": page1,
+                    "level": node["level"],
+                    "kind": node["kind"],
+                    "y0": float(best["bbox"][1]),
+                    "y1": float(best["bbox"][3]),
+                }
+            )
+    return placements
+
+
+def classify_omission_context(item, placements):
+    same_page = [
+        p for p in placements
+        if p["page"] == item["page"] and p["y1"] <= float(item["bbox"][1]) + 0.5
+    ]
+    if same_page:
+        parent = max(same_page, key=lambda p: p["y1"])
+    else:
+        previous = [p for p in placements if p["page"] < item["page"]]
+        parent = max(previous, key=lambda p: (p["page"], p["y1"])) if previous else None
+
+    if parent is None:
+        return "review_required", None
+
+    # Native outline ends at level 5 (subsection). A body-only heading below
+    # a level-5 parent is a non-navigable lower-level subheading under the
+    # current Source Map schema/scope, not a hidden denominator identity.
+    if parent["level"] >= 5:
+        return "body_only_below_subsection", parent
+    return "review_required", parent
+
+
+def omission_scan(doc, nodes, valid_signatures, first_page1, last_page1, placements):
     known = {n["title_norm"] for n in nodes if n["title_norm"]}
     candidates = []
     fragments = 0
@@ -295,15 +359,23 @@ def omission_scan(doc, nodes, valid_signatures, first_page1, last_page1):
                 fragments += 1
                 continue
 
-            candidates.append(
-                {
-                    "page": page1,
-                    "text": raw,
-                    "norm": cn,
-                    "signature": list(cluster["sig"]),
-                    "bbox": [round(float(x), 2) for x in cluster["bbox"]],
+            item = {
+                "page": page1,
+                "text": raw,
+                "norm": cn,
+                "signature": list(cluster["sig"]),
+                "bbox": [round(float(x), 2) for x in cluster["bbox"]],
+            }
+            classification, parent = classify_omission_context(item, placements)
+            item["classification"] = classification
+            if parent is not None:
+                item["nearest_parent"] = {
+                    "index": parent["index"],
+                    "page": parent["page"],
+                    "level": parent["level"],
+                    "kind": parent["kind"],
                 }
-            )
+            candidates.append(item)
 
     # Deduplicate repeated extraction of the same cluster.
     uniq = {}
@@ -358,9 +430,15 @@ def main(pdf_path: str):
         if not ok:
             printed_misses.append(node)
 
+    supplement_printed_contents_match_count = sum(
+        ok for node, ok in zip(nodes, printed_matches) if node["is_supplement"]
+    )
+
     locator_results = []
-    for node in nodes:
-        matched, resolved_page, method = title_matches_page(doc, node)
+    for node, printed_ok in zip(nodes, printed_matches):
+        matched, resolved_page, method = title_matches_page(
+            doc, node, printed_contents_match=printed_ok
+        )
         locator_results.append(
             {
                 "index": node["index"],
@@ -378,12 +456,14 @@ def main(pdf_path: str):
     valid_sigs, sig_counts, sig_by_level = collect_heading_signatures(
         doc, nodes, locator_results
     )
+    placements = known_heading_placements(doc, nodes, locator_results, valid_sigs)
     omission_candidates, fragment_count = omission_scan(
         doc,
         nodes,
         valid_sigs,
         first_academic_page1,
         max(first_academic_page1, terminal_index_page1 - 1),
+        placements,
     )
 
     # The audit itself does not silently decide the denominator. It records
@@ -433,6 +513,18 @@ def main(pdf_path: str):
         "chapter_count": chapter_count,
         "supplement_count": supplement_count,
         "supplement_histogram": dict(sorted(supplement_hist.items())),
+        "supplement_printed_contents_match_count": supplement_printed_contents_match_count,
+        "source_hierarchy_includes_all_supplements": (
+            supplement_printed_contents_match_count == supplement_count
+        ),
+        "omission_body_only_below_subsection_count": sum(
+            x["classification"] == "body_only_below_subsection"
+            for x in omission_candidates
+        ),
+        "omission_review_required_count": sum(
+            x["classification"] == "review_required"
+            for x in omission_candidates
+        ),
         "candidate_denominator_inclusive": inclusive,
         "candidate_denominator_structural_only": structural_only,
         "printed_contents_match_count": sum(printed_matches),
@@ -476,6 +568,8 @@ def main(pdf_path: str):
         print(
             "OMISSION_CANDIDATE",
             item["page"],
+            item["classification"],
+            item.get("nearest_parent"),
             item["signature"],
             item["text"][:180],
         )
