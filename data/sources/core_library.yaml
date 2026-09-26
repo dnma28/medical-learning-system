@@ -51,7 +51,7 @@ sources:
     match_patterns:
       - '(?i)principles.*neural.*scien'
     notes:
-      - Registered Drive bytes verified against current source: SHA-256 d7a109d665f0da52aa0e8bf15bddb4cfe288cf466a1dba3958b2f164b43f3cd0.
+      - 'Registered Drive bytes verified against current source: SHA-256 d7a109d665f0da52aa0e8bf15bddb4cfe288cf466a1dba3958b2f164b43f3cd0.'
       - Source title page verifies Sixth Edition; copyright notice is © 2021 McGraw Hill. Publication year remains unset and is not inferred from copyright year.
       - eBook ISBN 978-1-25-964224-1; print ISBN 978-1-25-964223-4.
       - Existing deep-extraction checkpoint must be normalized into one book-level Source Map.
