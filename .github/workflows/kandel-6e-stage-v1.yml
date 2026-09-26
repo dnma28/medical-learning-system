@@ -1,0 +1,59 @@
+name: Kandel 6e immutable staging
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/source_audits/stage_kandel6e.py"
+      - ".github/workflows/kandel-6e-stage-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+      MLS_SUPABASE_SECRET_KEY: ${{ secrets.MLS_SUPABASE_SECRET_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate secret presence
+        shell: bash
+        run: |
+          test -n "$MLS_SUPABASE_URL"
+          test -n "$MLS_SUPABASE_SECRET_KEY"
+
+      - name: Install deterministic PDF tooling
+        run: |
+          python -m pip install --disable-pip-version-check             "PyMuPDF==1.26.6"             "gdown==5.2.0"
+
+      - name: Download exact registered Kandel 6e source
+        run: |
+          gdown --id 1Gb8RpPcZBq8ThMnbEnyFfXl2ck9-cpYm -O kandel.pdf
+          test "$(stat -c%s kandel.pdf)" = "211983909"
+          echo "d7a109d665f0da52aa0e8bf15bddb4cfe288cf466a1dba3958b2f164b43f3cd0  kandel.pdf" | sha256sum -c -
+
+      - name: Re-run final read-only audit
+        run: |
+          python scripts/source_audits/audit_kandel6e.py kandel.pdf
+
+      - name: Build, insert, and validate immutable staging v1
+        run: |
+          python scripts/source_audits/stage_kandel6e.py
+
+      - name: Upload staging evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: kandel-6e-staging-v1
+          path: |
+            kandel_6e_audit_summary.json
+            kandel_6e_exception_ledger.json
+            kandel_6e_staging_result.json
+          if-no-files-found: error
+          retention-days: 14
