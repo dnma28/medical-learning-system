@@ -1,6 +1,12 @@
 name: Kandel 6e final source audit
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/source_audits/audit_kandel6e.py"
+      - ".github/workflows/kandel-6e-final-audit.yml"
   pull_request:
     paths:
       - "scripts/source_audits/audit_kandel6e.py"
