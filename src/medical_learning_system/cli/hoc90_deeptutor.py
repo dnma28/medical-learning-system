@@ -75,13 +75,6 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
         .limit(1)
         .execute()
     )
-    evidence_rows = _rows(
-        client.table("mls_evidence_blocks")
-        .select("evidence_id", count="exact")
-        .limit(1)
-        .execute()
-    )
-
     source = None
     if logical_source_id:
         rows = _rows(
