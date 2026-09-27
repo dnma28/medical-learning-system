@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
-from ..source_map import LearningValue
+from ..source_map import LearningValue, SourceMapNode
 
 
 def _utcnow() -> datetime:
@@ -56,7 +56,10 @@ class SourceSpineRef(BaseModel):
     source_map_node_id: str | None = None
     source_id: str | None = None
     source_anchor: dict[str, Any] = Field(default_factory=dict)
-    learning_value: LearningValue = LearningValue.CORE_MASTERY
+    # Source structure is curriculum-neutral until a reviewed Source Map or
+    # learner-approved blueprint assigns a learning role. Never infer
+    # CORE_MASTERY merely because the ref is used by HỌC90.
+    learning_value: LearningValue | None = None
     freshness_required: bool = False
 
     @model_validator(mode="after")
@@ -69,6 +72,18 @@ class SourceSpineRef(BaseModel):
                 "CURRENT_CLINICAL_CHECK source refs require freshness verification"
             )
         return self
+
+    @classmethod
+    def from_source_map_node(cls, node: SourceMapNode) -> "SourceSpineRef":
+        """Preserve one promoted Source Map node without inventing curriculum semantics."""
+        return cls(
+            logical_source_id=node.logical_source_id,
+            source_map_node_id=node.node_id,
+            source_id=node.source_id,
+            source_anchor=dict(node.source_anchor),
+            learning_value=node.learning_value,
+            freshness_required=node.freshness_required,
+        )
 
     @property
     def routing_key(self) -> str:
