@@ -58,17 +58,6 @@ class Hoc90RuntimeService:
         resumable = self.store.load_resumable_session()
         active_blueprint = self.store.get_active_blueprint()
 
-        if (
-            command == Hoc90Command.START
-            and approved_curriculum_position
-            and active_blueprint is not None
-            and active_blueprint.curriculum_position != approved_curriculum_position
-        ):
-            raise Hoc90BootstrapError(
-                "Active HỌC90 blueprint does not match the explicitly approved "
-                "curriculum position."
-            )
-
         plan = build_bootstrap_plan(
             command=command,
             resumable_session=resumable,
@@ -97,6 +86,17 @@ class Hoc90RuntimeService:
 
         if plan.mode != BootstrapMode.START_NEW:
             return Hoc90BootstrapResult(plan=plan)
+
+        if (
+            command == Hoc90Command.START
+            and approved_curriculum_position
+            and active_blueprint is not None
+            and active_blueprint.curriculum_position != approved_curriculum_position
+        ):
+            raise Hoc90BootstrapError(
+                "Active HỌC90 blueprint does not match the explicitly approved "
+                "curriculum position."
+            )
 
         if active_blueprint is None:
             raise Hoc90BootstrapError(
