@@ -36,4 +36,13 @@ __all__ = [
     "SessionStage",
     "SessionStatus",
     "SourceSpineRef",
+    "Hoc90BootstrapError",
+    "Hoc90BootstrapResult",
+    "Hoc90RuntimeService",
 ]
+
+from .runtime_service import (
+    Hoc90BootstrapError,
+    Hoc90BootstrapResult,
+    Hoc90RuntimeService,
+)
