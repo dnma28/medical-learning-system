@@ -166,3 +166,20 @@ def test_start_rejects_active_blueprint_for_different_approved_position():
         )
 
     assert store.saved == []
+
+
+def test_existing_paused_session_wins_over_new_start_approval_mismatch():
+    store = Store(
+        resumable=session(),
+        active_blueprint=blueprint("new-position"),
+    )
+
+    result = Hoc90RuntimeService(store).bootstrap(
+        Hoc90Command.START,
+        approved_curriculum_position="different-new-position",
+    )
+
+    assert result.plan.mode == BootstrapMode.RESUME
+    assert result.resumed is True
+    assert result.session is not None
+    assert result.session.status == SessionStatus.ACTIVE
