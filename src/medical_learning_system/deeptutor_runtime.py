@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import contextmanager
 from hashlib import sha256
+import os
 from typing import Any
 from uuid import uuid4
 
@@ -136,12 +138,72 @@ class DeepTutorRuntimeExecutor:
             selection=selection,
             visible_text=source_text,
         )
-        result = await extension.run_action(action, context)
+        with self._provider_scope():
+            result = await extension.run_action(action, context)
         if hasattr(result, "model_dump"):
             return result.model_dump(mode="json")
         if isinstance(result, dict):
             return result
         raise TypeError("DeepTutor extension returned an unsupported result shape.")
+
+    @staticmethod
+    @contextmanager
+    def _provider_scope():
+        """Optionally inject an MLS-owned DeepTutor model configuration.
+
+        If MLS_DEEPTUTOR_MODEL is absent, DeepTutor keeps using its own configured
+        model catalog. When it is present, the backend can run headlessly using
+        environment secrets without writing DeepTutor user settings to disk.
+        """
+        model = os.getenv("MLS_DEEPTUTOR_MODEL", "").strip()
+        if not model:
+            yield
+            return
+
+        api_key = (
+            os.getenv("MLS_DEEPTUTOR_API_KEY", "").strip()
+            or os.getenv("OPENAI_API_KEY", "").strip()
+        )
+        if not api_key:
+            raise DeepTutorRuntimeUnavailable(
+                "MLS_DEEPTUTOR_MODEL is configured but no MLS_DEEPTUTOR_API_KEY "
+                "or OPENAI_API_KEY is available."
+            )
+
+        try:
+            from deeptutor.services.llm.config import (
+                LLMConfig,
+                reset_scoped_llm_config,
+                set_scoped_llm_config,
+            )
+        except ImportError as exc:
+            raise DeepTutorRuntimeUnavailable(
+                "DeepTutor provider configuration is unavailable."
+            ) from exc
+
+        binding = os.getenv("MLS_DEEPTUTOR_BINDING", "openai").strip() or "openai"
+        provider = (
+            os.getenv("MLS_DEEPTUTOR_PROVIDER", binding).strip() or binding
+        )
+        base_url = (
+            os.getenv("MLS_DEEPTUTOR_BASE_URL", "").strip()
+            or ("https://api.openai.com/v1" if binding == "openai" else None)
+        )
+        config = LLMConfig(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            effective_url=base_url,
+            binding=binding,
+            provider_name=provider,
+            api_format=os.getenv("MLS_DEEPTUTOR_API_FORMAT", "auto").strip() or "auto",
+            wire_api="auto",
+        )
+        token = set_scoped_llm_config(config)
+        try:
+            yield
+        finally:
+            reset_scoped_llm_config(token)
 
     @staticmethod
     def _normalize_result(
