@@ -113,8 +113,20 @@ def test_continue_without_resumable_session_does_not_create_one():
     assert store.saved == []
 
 
-def test_start_without_approved_position_fails_closed_to_curriculum():
-    store = Store(active_blueprint=blueprint())
+def test_start_reuses_curriculum_position_from_active_blueprint():
+    bp = blueprint()
+    store = Store(active_blueprint=bp)
+
+    result = Hoc90RuntimeService(store).bootstrap(Hoc90Command.START)
+
+    assert result.plan.mode == BootstrapMode.START_NEW
+    assert result.created is True
+    assert result.session is not None
+    assert result.session.curriculum_position == bp.curriculum_position
+
+
+def test_start_without_blueprint_or_explicit_position_needs_curriculum():
+    store = Store()
 
     result = Hoc90RuntimeService(store).bootstrap(Hoc90Command.START)
 
