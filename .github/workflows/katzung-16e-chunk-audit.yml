@@ -1,0 +1,74 @@
+name: Katzung 16e registered-chunk source audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/source_audits/audit_katzung16e_chunks.py"
+      - ".github/workflows/katzung-16e-chunk-audit.yml"
+  pull_request:
+    paths:
+      - "scripts/source_audits/audit_katzung16e_chunks.py"
+      - ".github/workflows/katzung-16e-chunk-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deterministic PDF tooling
+        run: |
+          python -m pip install --disable-pip-version-check             "PyMuPDF==1.26.6"             "gdown==5.2.0"
+
+      - name: Download exact registered Katzung chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p katzung_chunks
+          ids=(
+            1QyIOGcSYdr2mJFwosd8sWH9Z9TXCSxUi
+            1sKChgBpK6pUgCzvDAflRO75_wEhUVlrl
+            1CZE3MPkNo3NMlOIplATL1AV_iQ8sm5Cf
+            1uerpAYyxj6m8Uieh8pPNU8yuAzPGI50E
+            1IwjWFwTYM_Pia_VaWlVH3-u1l3CVN2yo
+            1sieg45UxC4hEKvCDB2Q-_AI1adzxibvu
+            1HlbzZUdPSgvS6m_jE2Gnykh1eUbiBV-n
+            1PWhpgzqbVmBw5PWN19vfCu-hofyb7gE9
+            1kRIsfuzrGe_TGuXfrCApn6CCjx8Nq9LI
+            1ngbQCDGUAZN9ro1OGTChQ2pPIn_eM74N
+            1cJQs67kwLTCKpcwuK_a6NgucoqOmw0YW
+            1v84_JctRof43o651jNTdcCPgTeXpKK6w
+            17-snt8Ccc1CiNmsEpRUz2df7HlPrnuAw
+            11GkzDcuQTs4R7QZvkYan7ZTXGCiZK7vD
+            1y-0kdZED1l8aF2Z4ZvUhIFlec-q4xdL0
+            1hzoW91Ug6eKGDsrfMzduPV-rVb6_jQ0t
+            1sCfQtBgbXokW-FVhceytvPlVfnI44Nej
+            1oBuGnTloKsmc4xMKW9sSNV58JQpIqzu1
+            1xhB20OVorkmf_r1q1O-kmyUmHGIF_cBD
+            13hO6vZmNgWE7chttvCbMaLkN0zYAd44e
+          )
+          for i in $(seq 1 20); do
+            gdown --id "${ids[$((i-1))]}" -O "katzung_chunks/Katzung_${i}.pdf"
+          done
+
+      - name: Execute exact-chunk audit
+        run: |
+          python scripts/source_audits/audit_katzung16e_chunks.py katzung_chunks
+
+      - name: Upload review packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: katzung-16e-registered-chunk-source-audit
+          path: |
+            katzung_16e_chunk_audit_summary.json
+            katzung_16e_chunk_observation_ledger.json
+          if-no-files-found: error
+          retention-days: 14
