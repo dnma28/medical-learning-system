@@ -1,0 +1,37 @@
+name: work-item-coordination-guard
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install project
+        run: pip install -e .
+      - name: Snapshot open issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue list --state open --limit 500 --json number,title,body,url > "$RUNNER_TEMP/open-issues.json"
+      - name: Validate current work item
+        if: github.event_name == 'issues'
+        run: >-
+          python scripts/check_work_item_guard.py
+          --issues "$RUNNER_TEMP/open-issues.json"
+          --current-number "${{ github.event.issue.number }}"
+      - name: Audit all keyed work items
+        if: github.event_name == 'workflow_dispatch'
+        run: >-
+          python scripts/check_work_item_guard.py
+          --issues "$RUNNER_TEMP/open-issues.json"
+          --audit-all
