@@ -72,7 +72,9 @@ SUPPLEMENT_RE = re.compile(
 CONTINUATION_RE = re.compile(r"^(?:\(?continued\)?|continued\b)", re.IGNORECASE)
 LETTERED_RE = re.compile(r"^[A-Z]\.(?:\s|$)")
 NUMBERED_RE = re.compile(r"^\d+\.(?:\s|$)")
-CHAPTER_RE = re.compile(r"^\s*CHAPTER\s+(\d{1,2})\b", re.IGNORECASE)
+# Conservative chapter-opening diagnostic. Running headers are deduplicated
+# below, while prose cross-references such as "Chapter 24)" are rejected.
+CHAPTER_RE = re.compile(r"^\s*CHAPTER\s+(\d{1,2})\s+\S")
 BOLD_FONT_RE = re.compile(r"(?:bold|semibold|black|demi)", re.IGNORECASE)
 FOLIO_RE = re.compile(r"^\s*(\d{1,4})\s*$")
 
@@ -324,8 +326,9 @@ def infer_folio_mapping(doc) -> dict:
 
 
 def chapter_markers(doc) -> list[dict]:
+    """Return at most one conservative chapter-opening marker per chunk."""
     markers = []
-    seen = set()
+    seen: set[int] = set()
     for page_index in range(doc.page_count):
         text = doc[page_index].get_text("text")
         for raw_line in text.splitlines():
@@ -336,10 +339,9 @@ def chapter_markers(doc) -> list[dict]:
             chapter = int(match.group(1))
             if not 1 <= chapter <= 67:
                 continue
-            key = (chapter, page_index, norm(line))
-            if key in seen:
+            if chapter in seen:
                 continue
-            seen.add(key)
+            seen.add(chapter)
             markers.append(
                 {
                     "chapter": chapter,
