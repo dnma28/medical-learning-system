@@ -76,6 +76,7 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
         .execute()
     )
     source = None
+    source_map_readiness = None
     if logical_source_id:
         rows = _rows(
             client.table("mls_logical_sources")
@@ -85,14 +86,37 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
             .execute()
         )
         source = rows[0] if rows else None
+        readiness_response = client.rpc(
+            "mls_source_map_readiness",
+            {"p_logical_source_id": logical_source_id},
+        ).execute()
+        raw_readiness = getattr(readiness_response, "data", None)
+        if isinstance(raw_readiness, dict):
+            source_map_readiness = raw_readiness
+        elif (
+            isinstance(raw_readiness, list)
+            and raw_readiness
+            and isinstance(raw_readiness[0], dict)
+        ):
+            source_map_readiness = raw_readiness[0]
 
-    # supabase-py exposes exact count on response.count rather than in rows.
-    evidence_query = (
-        client.table("mls_evidence_blocks")
-        .select("evidence_id", count="exact")
-        .limit(1)
-        .execute()
-    )
+    # Readiness is source-specific. Evidence from another book must not make this
+    # source look runnable.
+    if logical_source_id:
+        evidence_query = (
+            client.table("mls_source_map_evidence_links")
+            .select("evidence_id", count="exact")
+            .eq("logical_source_id", logical_source_id)
+            .limit(1)
+            .execute()
+        )
+    else:
+        evidence_query = (
+            client.table("mls_evidence_blocks")
+            .select("evidence_id", count="exact")
+            .limit(1)
+            .execute()
+        )
     evidence_count = getattr(evidence_query, "count", None)
     if evidence_count is None:
         evidence_count = len(_rows(evidence_query))
@@ -103,13 +127,13 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
     if not session_rows:
         blockers.append("no_active_or_paused_session")
     if not evidence_count:
-        blockers.append("no_evidence_blocks")
+        blockers.append("no_exact_source_map_evidence")
     if logical_source_id and (
         source is None
-        or source.get("source_map_state") != "mapped"
-        or int(source.get("source_map_version") or 0) < 1
+        or source_map_readiness is None
+        or source_map_readiness.get("ready_for_hoc90") is not True
     ):
-        blockers.append("source_map_not_promoted")
+        blockers.append("source_map_not_ready_for_hoc90")
 
     return {
         "ready": not blockers,
@@ -118,6 +142,7 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
         "resumable_session": session_rows[0] if session_rows else None,
         "evidence_blocks": evidence_count,
         "logical_source": source,
+        "source_map_readiness": source_map_readiness,
     }
 
 
