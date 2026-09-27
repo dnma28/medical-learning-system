@@ -14,13 +14,16 @@ content, evaluate learner answers, or award mastery.
 1. If an ACTIVE or PAUSED session exists, START and CONTINUE both resume it.
 2. CONTINUE with no resumable session returns `NEEDS_BLUEPRINT`; it never invents a new
    session.
-3. START without an explicitly approved curriculum position returns
-   `NEEDS_CURRICULUM`.
-4. START with an approved position but no ACTIVE blueprint returns `NEEDS_BLUEPRINT`.
-5. START with a matching ACTIVE blueprint creates one 90-minute ACTIVE session from that
+3. START may reuse the curriculum position stored in an ACTIVE blueprint; ACTIVE is the
+   persisted runtime state of a previously approved blueprint, so the learner does not have
+   to repeat the position on every session start.
+4. START with neither a persisted active-blueprint position nor an explicit approved position
+   returns `NEEDS_CURRICULUM`.
+5. START with an approved position but no ACTIVE blueprint returns `NEEDS_BLUEPRINT`.
+6. START with a matching ACTIVE blueprint creates one 90-minute ACTIVE session from that
    blueprint.
-6. If the active blueprint targets a different curriculum position than the explicit
-   approval, bootstrap fails closed.
+7. If the caller supplies an explicit position and the active blueprint targets a different
+   position, bootstrap fails closed.
 
 Structured `SourceSpineRef` values are copied exactly, including a nullable
 `learning_value`. Using a source in HỌC90 never converts curriculum-neutral structure
