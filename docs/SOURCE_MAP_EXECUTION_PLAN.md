@@ -123,28 +123,38 @@ After the completed Costanzo pilot, choose the next **input-ready** book from li
 As of the live refresh on 2026-09-27:
 
 - Costanzo, Kandel and Magee have completed certificate/promotion/readback and are `ready_for_hoc90`;
-- Neumann remains blocked by review plus canonical Part 3/full-book access evidence;
-- Junqueira remains blocked by registered-source body recovery/corruption evidence;
-- Katzung is the next active input-ready serial target and is tracked in #124;
-- all other books remain pending source-map authoring/reconciliation according to live readiness.
+- the first exact Costanzo HỌC90 pilot is live, and Source Map evidence links are hardened against stale-version/silent-fallback failures;
+- Kisner #166 is the current input-ready serial Source Map evidence target with an exact fingerprinted single-file source;
+- Katzung #124 has independently approved audit tooling but is parked at a required Appendix 1–3 physical-source gap; denominator remains NULL;
+- Robbins is parked at a registered-source corruption gap in its bounded middle-body interval;
+- Neumann is reduced to canonical Part 3/full-book access/binding evidence;
+- Junqueira remains blocked by registered-source Chapter 23 corruption/recovery evidence;
+- Stryer retains its exact-source finite exception queue for a later serial turn;
+- all other books remain pending source-map authoring/reconciliation according to fresh live readiness.
 
 This paragraph is a checkpoint, not a permanent queue. Refresh before acting.
 
-## Katzung current bounded operation
+## Current serial operation: Kisner
 
-The active Katzung operation is deterministic exact-chunk reconciliation across the 20 registered physical sources:
+Kisner #166 currently owns the mutable `source-map:kisner-therapeutic-exercise` work key.
 
-1. verify exact Drive ID / byte size / SHA-256 for every chunk;
-2. rerun omitted-style inventory on the canonical chunks;
-3. reduce ambiguous observations to a finite review queue;
-4. construct candidate parent stacks without flattening source hierarchy;
-5. audit all 19 inter-chunk seams and printed-folio mappings;
-6. reconcile against printed Contents/full-book structural evidence;
-7. keep supplements in an auditable sidecar unless source hierarchy makes them required;
-8. leave `page_end=null`;
-9. only then propose an authoritative denominator/staging version.
+The evidence-writer operation is bounded to:
 
-The historical full-book candidate pool is diagnostic evidence only.
+1. exact registered Drive identity/fingerprint readback;
+2. internal title/edition/year evidence;
+3. printed/native hierarchy inventory;
+4. deterministic structural-vs-supplement classification;
+5. exact physical point locators with `page_end=null` unless the source directly verifies a range;
+6. a finite REVIEW_REQUIRED/SOURCE_GAP ledger and durable evidence packet;
+7. independent review before any denominator/staging proposal.
+
+Do not open a second mutable Kisner issue while #166 is active.
+
+## Katzung parked checkpoint
+
+Katzung's exact 20-chunk audit tooling is independently approved for audit use, but that approval does not establish the denominator. The finite main-text queues remain useful evidence work. Closure is currently blocked because the registered 20 chunks do not contain required Appendices 1–3. Do not construct appendix locators from an unregistered comparison attachment or infer them from the printed Contents. Resume certification work only after an exact canonical physical source covering the appendices is registered/fingerprinted.
+
+The historical full-book candidate pool remains diagnostic evidence only.
 
 ## Corpus completion gate
 
