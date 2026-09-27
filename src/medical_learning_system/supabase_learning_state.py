@@ -73,6 +73,17 @@ class SupabaseLearningStateStore:
             return active
         return self._latest_session(SessionStatus.PAUSED)
 
+    def get_session(self, session_id: str) -> Hoc90Session | None:
+        response = (
+            self.client.table(self.SESSIONS)
+            .select("*")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+        )
+        rows = _data(response)
+        return Hoc90Session.model_validate(rows[0]) if rows else None
+
     def _latest_session(self, status: SessionStatus) -> Hoc90Session | None:
         response = (
             self.client.table(self.SESSIONS)
