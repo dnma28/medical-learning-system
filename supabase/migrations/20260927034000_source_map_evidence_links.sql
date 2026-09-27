@@ -161,6 +161,90 @@ create trigger mls_source_map_evidence_link_validate
 before insert or update on public.mls_source_map_evidence_links
 for each row execute function public.mls_validate_source_map_evidence_link();
 
+create function public.mls_validate_source_map_evidence_status()
+returns trigger language plpgsql security invoker
+set search_path = ''
+as $
+declare
+    v_book public.mls_logical_sources%rowtype;
+    v_link_count integer;
+begin
+    if new.state <> 'ready' then
+        return new;
+    end if;
+
+    if pg_catalog.jsonb_array_length(new.unresolved_node_ids) <> 0
+       or new.evidence_blocks <= 0
+       or new.promoted_links <= 0
+    then
+        raise exception 'ready evidence status requires complete non-empty evidence';
+    end if;
+
+    select * into v_book
+    from public.mls_logical_sources
+    where logical_source_id = new.logical_source_id;
+
+    if not found
+       or v_book.promoted_staging_version is distinct from new.staging_version
+       or not public.mls_runtime_matches_staging(
+            new.logical_source_id, new.staging_version
+          )
+    then
+        raise exception 'ready evidence status requires the active promoted Source Map';
+    end if;
+
+    select count(*) into v_link_count
+    from public.mls_source_map_evidence_links l
+    where l.logical_source_id = new.logical_source_id
+      and l.staging_version = new.staging_version
+      and l.status = 'promoted';
+
+    if v_link_count <> new.promoted_links then
+        raise exception 'promoted link count readback mismatch';
+    end if;
+
+    if exists (
+        select 1
+        from public.mls_source_map_staging st
+        cross join lateral pg_catalog.jsonb_array_elements(st.proposal) n
+        where st.logical_source_id = new.logical_source_id
+          and st.staging_version = new.staging_version
+          and n.value->>'kind' <> 'book'
+          and nullif(n.value->>'source_id', '') is not null
+          and not exists (
+              select 1
+              from public.mls_source_map_evidence_links l
+              where l.logical_source_id = new.logical_source_id
+                and l.staging_version = new.staging_version
+                and l.node_id = n.value->>'node_id'
+                and l.source_id = n.value->>'source_id'
+                and l.status = 'promoted'
+          )
+    ) then
+        raise exception 'ready evidence status has uncovered Source Map nodes';
+    end if;
+
+    if exists (
+        select 1
+        from public.mls_source_map_staging st
+        cross join lateral pg_catalog.jsonb_array_elements(st.proposal) n
+        where st.logical_source_id = new.logical_source_id
+          and st.staging_version = new.staging_version
+          and n.value->>'kind' <> 'book'
+          and nullif(n.value->>'source_id', '') is not null
+          and not (new.source_manifest ? (n.value->>'source_id'))
+    ) then
+        raise exception 'ready evidence status source manifest is incomplete';
+    end if;
+
+    return new;
+end;
+$;
+
+create trigger mls_source_map_evidence_status_validate
+before insert or update on public.mls_source_map_evidence_status
+for each row execute function public.mls_validate_source_map_evidence_status();
+
 create function public.mls_replace_source_map_evidence_links(
     p_logical_source_id text,
     p_staging_version bigint,
@@ -221,6 +305,8 @@ grant all on public.mls_source_map_evidence_status,
 to service_role;
 
 revoke all on function public.mls_validate_source_map_evidence_link()
+from public, anon, authenticated;
+revoke all on function public.mls_validate_source_map_evidence_status()
 from public, anon, authenticated;
 revoke all on function public.mls_replace_source_map_evidence_links(
     text, bigint, text, jsonb
