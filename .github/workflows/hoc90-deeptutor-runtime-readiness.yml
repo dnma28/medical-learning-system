@@ -1,0 +1,73 @@
+name: HOC90 DeepTutor runtime readiness
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/medical_learning_system/deeptutor_runtime.py"
+      - "src/medical_learning_system/hoc90/deeptutor_bridge.py"
+      - "src/medical_learning_system/hoc90/source_context.py"
+      - "src/medical_learning_system/cli/hoc90_deeptutor.py"
+      - "pyproject.toml"
+      - ".github/workflows/hoc90-deeptutor-runtime-readiness.yml"
+  workflow_dispatch:
+    inputs:
+      logical_source_id:
+        description: Logical source to inspect
+        required: false
+        default: guyton-hall-physiology
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+      MLS_SUPABASE_SECRET_KEY: ${{ secrets.MLS_SUPABASE_SECRET_KEY }}
+      MLS_DEEPTUTOR_MODEL: ${{ secrets.MLS_DEEPTUTOR_MODEL }}
+      MLS_DEEPTUTOR_API_KEY: ${{ secrets.MLS_DEEPTUTOR_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Validate backend Supabase secrets
+        shell: bash
+        run: |
+          test -n "$MLS_SUPABASE_URL" || {
+            echo "MLS_SUPABASE_URL is missing"
+            exit 1
+          }
+          test -n "$MLS_SUPABASE_SECRET_KEY" || {
+            echo "MLS_SUPABASE_SECRET_KEY is missing"
+            exit 1
+          }
+
+      - name: Install deployed runtime
+        run: pip install -e '.[supabase,deeptutor]'
+
+      - name: Verify DeepTutor upstream contract
+        run: python scripts/check_deeptutor.py
+
+      - name: Report provider configuration
+        shell: bash
+        run: |
+          if [ -n "$MLS_DEEPTUTOR_MODEL" ] && [ -n "$MLS_DEEPTUTOR_API_KEY" ]; then
+            echo "DeepTutor headless model provider is configured."
+          else
+            echo "DeepTutor provider secret/model is not configured; readiness remains source/runtime-only."
+          fi
+
+      - name: Check live HOC90 runtime readiness
+        shell: bash
+        env:
+          LOGICAL_SOURCE_ID: ${{ inputs.logical_source_id || 'guyton-hall-physiology' }}
+        run: |
+          mls-hoc90-deeptutor readiness --logical-source-id "$LOGICAL_SOURCE_ID"
