@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .hoc90.session import SourceSpineRef
+from .session import SourceSpineRef
 
 
 class SourceContextUnavailable(RuntimeError):
