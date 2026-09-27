@@ -141,3 +141,8 @@ def test_task_and_evidence_identity_must_match():
             task=task(),
             evidence=mismatched,
         )
+
+
+def test_clinical_reasoning_task_requires_source_routing_key():
+    with pytest.raises(ValueError):
+        task(source_routing_keys=[])
