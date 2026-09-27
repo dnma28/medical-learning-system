@@ -91,7 +91,7 @@ def base_tables():
         "mls_learning_sessions": [
             {
                 "session_id": "session",
-                "status": "active",
+                "status": "paused",
                 "topic": "Cellular physiology",
                 "updated_at": "2026-09-27T03:00:00Z",
             }
@@ -102,50 +102,103 @@ def base_tables():
                 "title": "Costanzo Physiology",
                 "source_map_state": "unmapped",
                 "source_map_version": 1,
+                "promoted_staging_version": 4,
+            }
+        ],
+        "mls_source_map_evidence_status": [
+            {
+                "logical_source_id": "costanzo-physiology",
+                "staging_version": 4,
+                "state": "partial",
+                "legacy_fallback_disabled": True,
+                "evidence_blocks": 1,
+                "promoted_links": 3,
             }
         ],
         "mls_source_map_evidence_links": [
             {
                 "logical_source_id": "costanzo-physiology",
+                "staging_version": 4,
+                "status": "promoted",
                 "evidence_id": "ev-1",
             }
         ],
     }
 
 
-def test_readiness_uses_audited_rpc_not_historical_source_map_label():
+def ready_rpc():
+    return {
+        "logical_source_id": "costanzo-physiology",
+        "ready_for_hoc90": True,
+        "audited_state": "ready_for_hoc90",
+        "current_version": 1,
+    }
+
+
+def test_readiness_accepts_partial_migration_for_existing_exact_pilot():
     result = _readiness(
-        Client(
-            base_tables(),
-            {
-                "logical_source_id": "costanzo-physiology",
-                "ready_for_hoc90": True,
-                "audited_state": "ready_for_hoc90",
-                "current_version": 1,
-            },
-        ),
+        Client(base_tables(), ready_rpc()),
         "costanzo-physiology",
     )
 
     assert result["ready"] is True
     assert result["blockers"] == []
-    assert result["source_map_readiness"]["ready_for_hoc90"] is True
+    assert result["source_map_evidence_status"]["state"] == "partial"
 
 
-def test_readiness_requires_evidence_for_requested_logical_source():
+def test_readiness_requires_current_stage_promoted_evidence():
     tables = base_tables()
     tables["mls_source_map_evidence_links"] = [
         {
-            "logical_source_id": "kandel-principles-neural-science",
-            "evidence_id": "other",
+            "logical_source_id": "costanzo-physiology",
+            "staging_version": 3,
+            "status": "promoted",
+            "evidence_id": "old",
         }
     ]
+
+    result = _readiness(
+        Client(tables, ready_rpc()),
+        "costanzo-physiology",
+    )
+
+    assert result["ready"] is False
+    assert "no_exact_source_map_evidence" in result["blockers"]
+
+
+def test_readiness_blocks_stale_migration_after_new_promotion():
+    tables = base_tables()
+    tables["mls_logical_sources"][0]["promoted_staging_version"] = 5
+
+    result = _readiness(
+        Client(tables, ready_rpc()),
+        "costanzo-physiology",
+    )
+
+    assert result["ready"] is False
+    assert "source_map_evidence_stale" in result["blockers"]
+
+
+def test_readiness_blocks_review_required_evidence_state():
+    tables = base_tables()
+    tables["mls_source_map_evidence_status"][0]["state"] = "review_required"
+
+    result = _readiness(
+        Client(tables, ready_rpc()),
+        "costanzo-physiology",
+    )
+
+    assert result["ready"] is False
+    assert "source_map_evidence_review_required" in result["blockers"]
+
+
+def test_readiness_still_requires_audited_source_map():
     result = _readiness(
         Client(
-            tables,
+            base_tables(),
             {
                 "logical_source_id": "costanzo-physiology",
-                "ready_for_hoc90": True,
+                "ready_for_hoc90": False,
                 "current_version": 1,
             },
         ),
@@ -153,4 +206,4 @@ def test_readiness_requires_evidence_for_requested_logical_source():
     )
 
     assert result["ready"] is False
-    assert "no_exact_source_map_evidence" in result["blockers"]
+    assert "source_map_not_ready_for_hoc90" in result["blockers"]
