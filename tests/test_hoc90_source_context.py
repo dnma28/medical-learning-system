@@ -63,9 +63,55 @@ def _ref():
     )
 
 
-def test_resolver_uses_exact_evidence_links_and_preserves_order():
+def test_resolver_prefers_promoted_source_map_links():
     client = Client(
         {
+            "mls_source_map_evidence_links": [
+                {
+                    "logical_source_id": "guyton-hall-physiology",
+                    "evidence_id": "new",
+                    "source_id": "guyton-physical",
+                    "node_id": "ch2-sec1",
+                    "confidence": 1.0,
+                }
+            ],
+            "mls_evidence_structure_links": [
+                {
+                    "evidence_id": "legacy",
+                    "source_id": "guyton-physical",
+                    "node_id": "ch2-sec1",
+                    "confidence": 1.0,
+                }
+            ],
+            "mls_evidence_blocks": [
+                {
+                    "evidence_id": "new",
+                    "source_id": "guyton-physical",
+                    "page_index": 10,
+                    "block_index": 1,
+                    "content_type": "text",
+                    "text": "promoted map evidence",
+                },
+                {
+                    "evidence_id": "legacy",
+                    "source_id": "guyton-physical",
+                    "page_index": 9,
+                    "block_index": 1,
+                    "content_type": "text",
+                    "text": "legacy evidence",
+                },
+            ],
+        }
+    )
+    result = SupabaseHoc90SourceContextResolver(client).resolve(_ref())
+    assert result.passages == ["promoted map evidence"]
+    assert result.evidence_ids == ["new"]
+
+
+def test_resolver_uses_exact_legacy_links_when_new_links_absent():
+    client = Client(
+        {
+            "mls_source_map_evidence_links": [],
             "mls_evidence_structure_links": [
                 {
                     "evidence_id": "e2",
@@ -109,6 +155,7 @@ def test_resolver_uses_exact_evidence_links_and_preserves_order():
 def test_resolver_falls_back_only_to_exact_legacy_scalar_alignment():
     client = Client(
         {
+            "mls_source_map_evidence_links": [],
             "mls_evidence_structure_links": [],
             "mls_evidence_blocks": [
                 {
@@ -139,6 +186,7 @@ def test_resolver_falls_back_only_to_exact_legacy_scalar_alignment():
 def test_resolver_fails_closed_when_exact_evidence_is_missing():
     client = Client(
         {
+            "mls_source_map_evidence_links": [],
             "mls_evidence_structure_links": [],
             "mls_evidence_blocks": [],
         }
