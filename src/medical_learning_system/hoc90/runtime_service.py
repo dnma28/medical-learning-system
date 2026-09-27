@@ -58,11 +58,23 @@ class Hoc90RuntimeService:
         resumable = self.store.load_resumable_session()
         active_blueprint = self.store.get_active_blueprint()
 
+        # ACTIVE is the persisted runtime state of an already-approved blueprint.
+        # Requiring the learner to repeat its curriculum position on every START
+        # would defeat the two-command interface. An explicit caller-supplied
+        # position still acts as a stricter assertion and must match.
+        effective_approved_position = approved_curriculum_position
+        if (
+            effective_approved_position is None
+            and active_blueprint is not None
+            and active_blueprint.curriculum_position
+        ):
+            effective_approved_position = active_blueprint.curriculum_position
+
         plan = build_bootstrap_plan(
             command=command,
             resumable_session=resumable,
             active_blueprint=active_blueprint,
-            approved_curriculum_position=approved_curriculum_position,
+            approved_curriculum_position=effective_approved_position,
         )
 
         if plan.mode == BootstrapMode.RESUME:
