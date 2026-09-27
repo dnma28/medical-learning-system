@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -13,12 +13,17 @@ from .evidence_alignment import (
     EvidenceStructureLink,
     align_evidence_to_structure,
 )
-from .parser_contract import materialize_evidence_only
+from .evidence_store import SourceEvidenceBlock
 from .native_pdf_text import parsed_document_from_native_pdf
+from .parser_contract import materialize_evidence_only
 from .source_map import SourceMapNode
 from .source_registry import SourceRecord
 from .sources import sha256_file
+from .supabase_source_map import SupabaseSourceMapStore
 from .supabase_storage import SupabaseMedicalStore
+
+
+COMPILER_VERSION = "source-map-evidence-v2"
 
 
 def _data(response: Any) -> list[dict[str, Any]]:
@@ -28,86 +33,129 @@ def _data(response: Any) -> list[dict[str, Any]]:
     return list(data or [])
 
 
-class SourceMapEvidenceLink(BaseModel):
-    logical_source_id: str = Field(min_length=1)
-    node_id: str = Field(min_length=1)
-    evidence_id: str = Field(min_length=1)
-    source_id: str = Field(min_length=1)
-    source_map_version: int = Field(gt=0)
-    method: AlignmentMethod
-    confidence: float = Field(ge=0.0, le=1.0)
+class SourceMapEvidenceMigrationState(str, Enum):
+    PARTIAL = "partial"
+    COMPLETE = "complete"
+    REVIEW_REQUIRED = "review_required"
+    STALE = "stale"
 
 
 class SourceMapEvidenceCompilation(BaseModel):
     logical_source_id: str
     source_id: str
-    source_map_version: int
-    content_sha256: str
+    staging_version: int = Field(gt=0)
+    source_map_version: int = Field(gt=0)
+    content_sha256: str = Field(min_length=64, max_length=64)
     evidence_blocks: int = Field(ge=0)
     alignment_links: int = Field(ge=0)
     linked_node_ids: list[str] = Field(default_factory=list)
     unlinked_node_ids: list[str] = Field(default_factory=list)
+    migration_state: SourceMapEvidenceMigrationState
 
 
 class SupabaseSourceMapEvidenceLinkStore:
+    """Backend adapter for one atomic evidence + immutable-stage link commit."""
+
     TABLE = "mls_source_map_evidence_links"
+    STATUS = "mls_source_map_evidence_status"
 
     def __init__(self, client: Any):
         self.client = client
 
-    def replace_source(
+    def commit_source(
         self,
         *,
         logical_source_id: str,
-        source_id: str,
+        staging_version: int,
         source_map_version: int,
+        source: SourceRecord,
+        blocks: list[SourceEvidenceBlock],
         links: list[EvidenceStructureLink],
-    ) -> None:
-        if any(link.source_id != source_id for link in links):
-            raise ValueError("all evidence links must belong to source_id")
+        migration_state: SourceMapEvidenceMigrationState,
+        unresolved_node_ids: list[str],
+    ) -> dict[str, Any]:
+        if source.logical_source_id != logical_source_id:
+            raise ValueError("source/logical source identity mismatch")
+        if not source.content_sha256:
+            raise ValueError("source fingerprint is required")
+        if any(block.source_id != source.source_id for block in blocks):
+            raise ValueError("all evidence blocks must belong to source")
+        if any(link.source_id != source.source_id for link in links):
+            raise ValueError("all evidence links must belong to source")
 
-        (
-            self.client.table(self.TABLE)
-            .delete()
-            .eq("logical_source_id", logical_source_id)
-            .eq("source_id", source_id)
-            .execute()
-        )
-        if not links:
-            return
+        by_evidence = {block.evidence_id: block for block in blocks}
+        if len(by_evidence) != len(blocks):
+            raise ValueError("duplicate evidence_id")
+        if any(link.evidence_id not in by_evidence for link in links):
+            raise ValueError("link references evidence outside commit payload")
 
-        rows = [
-            {
-                "logical_source_id": logical_source_id,
-                "node_id": link.node_id,
-                "evidence_id": link.evidence_id,
-                "source_id": source_id,
-                "source_map_version": source_map_version,
-                "method": link.method.value,
-                "confidence": link.confidence,
-            }
+        evidence_payload = [_evidence_payload(block) for block in blocks]
+        link_payload = [
+            _link_payload(link, by_evidence[link.evidence_id])
             for link in links
         ]
-        self.client.table(self.TABLE).upsert(
-            rows,
-            on_conflict="logical_source_id,node_id,evidence_id",
+        response = self.client.rpc(
+            "mls_commit_source_map_evidence",
+            {
+                "p_logical_source_id": logical_source_id,
+                "p_staging_version": staging_version,
+                "p_source_map_version": source_map_version,
+                "p_source_id": source.source_id,
+                "p_expected_content_sha256": source.content_sha256,
+                "p_evidence": evidence_payload,
+                "p_links": link_payload,
+                "p_migration_state": migration_state.value,
+                "p_unresolved_node_ids": unresolved_node_ids,
+                "p_compiler_version": COMPILER_VERSION,
+                "p_source_manifest": {
+                    source.source_id: {
+                        "content_sha256": source.content_sha256,
+                        "size_bytes": source.size_bytes,
+                        "provider_file_id": source.provider_file_id,
+                    }
+                },
+            },
         ).execute()
+        result = getattr(response, "data", None)
+        if not isinstance(result, dict):
+            raise RuntimeError("atomic Source Map evidence commit returned no readback")
+        if int(result.get("evidence_blocks", -1)) != len(blocks):
+            raise RuntimeError("atomic evidence count readback mismatch")
+        if int(result.get("links", -1)) != len(links):
+            raise RuntimeError("atomic link count readback mismatch")
+        if int(result.get("staging_version", -1)) != staging_version:
+            raise RuntimeError("atomic staging version readback mismatch")
+        return dict(result)
+
+    def get_status(
+        self,
+        logical_source_id: str,
+        staging_version: int,
+    ) -> dict[str, Any] | None:
+        rows = _data(
+            self.client.table(self.STATUS)
+            .select("*")
+            .eq("logical_source_id", logical_source_id)
+            .eq("staging_version", staging_version)
+            .limit(1)
+            .execute()
+        )
+        return dict(rows[0]) if rows else None
 
 
 class SupabaseSourceMapEvidenceCompiler:
-    """Compile exact PDF evidence against an already promoted Source Map.
+    """Compile exact PDF evidence against the active certified Source Map.
 
-    This component never changes Source Map nodes, learner state, curriculum, KG,
-    or mastery. It verifies the registered byte fingerprint before replacing any
-    evidence for a source.
+    Structural placement is deterministic publisher-structure alignment only.
+    Embeddings, fuzzy matching, and model inference are not allowed here.
     """
 
-    SOURCE_MAP = "mls_source_map_nodes"
     EVIDENCE = "mls_evidence_blocks"
 
     def __init__(self, client: Any):
         self.client = client
         self.medical = SupabaseMedicalStore(client)
+        self.source_maps = SupabaseSourceMapStore(client)
         self.links = SupabaseSourceMapEvidenceLinkStore(client)
 
     def compile_path(
@@ -125,13 +173,20 @@ class SupabaseSourceMapEvidenceCompiler:
             raise ValueError("source does not belong to logical_source_id")
         if not source.content_sha256:
             raise RuntimeError("registered source has no verified content_sha256")
+        if source.size_bytes is not None and path.stat().st_size != source.size_bytes:
+            raise RuntimeError("materialized source size does not match registry")
 
-        readiness = self._readiness(logical_source_id)
+        readiness = self.source_maps.get_readiness(logical_source_id)
         if readiness.get("ready_for_hoc90") is not True:
             raise RuntimeError("Source Map is not audited/promoted ready_for_hoc90")
-        source_map_version = int(readiness.get("current_version") or 0)
-        if source_map_version < 1:
-            raise RuntimeError("Source Map has no promoted runtime version")
+
+        book = self.source_maps.get_logical_source(logical_source_id)
+        if book is None:
+            raise RuntimeError("logical source registry row is missing")
+        staging_version = int(book.get("promoted_staging_version") or 0)
+        source_map_version = int(book.get("source_map_version") or 0)
+        if staging_version < 1 or source_map_version < 1:
+            raise RuntimeError("Source Map promotion metadata is incomplete")
 
         digest = sha256_file(path)
         if digest != source.content_sha256:
@@ -143,69 +198,83 @@ class SupabaseSourceMapEvidenceCompiler:
                 "source already has evidence; explicit replacement authorization is required"
             )
 
-        nodes = self._source_map_nodes(logical_source_id)
+        nodes = [
+            SourceMapNode.model_validate(row)
+            for row in self.source_maps.get_source_map(logical_source_id)
+        ]
+        bound_sources = {
+            node.source_id
+            for node in nodes
+            if node.kind != StructureKind.BOOK and node.source_id is not None
+        }
+        if source_id not in bound_sources:
+            raise RuntimeError("physical source is not bound by the promoted Source Map")
+
         transient = _alignment_structure(nodes, source_id=source_id)
         if len(transient) < 2:
-            raise RuntimeError("promoted Source Map has no nodes for this physical source")
+            raise RuntimeError("promoted Source Map has no alignable nodes for this source")
 
         parsed = parsed_document_from_native_pdf(path)
         blocks = materialize_evidence_only(source_id=source_id, parsed=parsed)
-        links = align_evidence_to_structure(transient, blocks)
+        candidate_links = align_evidence_to_structure(transient, blocks)
 
-        # Replacing evidence first is fail-safe: any prior evidence links cascade
-        # away. If the new link write fails, HỌC90 sees SOURCE_GAP rather than
-        # stale context from a previous compilation.
-        self.medical.replace_evidence(source_id, blocks)
-        self.links.replace_source(
-            logical_source_id=logical_source_id,
-            source_id=source_id,
-            source_map_version=source_map_version,
-            links=links,
-        )
+        # Weak page-range candidates are useful audit signals but are not strong
+        # enough to become HỌC90 exact-node provenance automatically.
+        links = [
+            link
+            for link in candidate_links
+            if link.method != AlignmentMethod.PAGE_RANGE_CANDIDATE
+        ]
 
         structural_ids = {
             node.node_id
-            for node in transient
+            for node in nodes
             if node.kind != StructureKind.BOOK
+            and node.source_id == source_id
         }
         linked_ids = {
-            link.node_id for link in links
-            if link.node_id in structural_ids
+            link.node_id for link in links if link.node_id in structural_ids
         }
+        unlinked_ids = sorted(structural_ids - linked_ids)
+        migration_state = (
+            SourceMapEvidenceMigrationState.COMPLETE
+            if bound_sources == {source_id} and not unlinked_ids
+            else SourceMapEvidenceMigrationState.PARTIAL
+        )
+
+        # Fast pre-flight race check. The database RPC repeats this under an
+        # advisory transaction lock and is the final authority.
+        current = self.source_maps.get_logical_source(logical_source_id)
+        if (
+            current is None
+            or int(current.get("promoted_staging_version") or 0) != staging_version
+            or int(current.get("source_map_version") or 0) != source_map_version
+        ):
+            raise RuntimeError("Source Map promotion changed during evidence compilation")
+
+        result = self.links.commit_source(
+            logical_source_id=logical_source_id,
+            staging_version=staging_version,
+            source_map_version=source_map_version,
+            source=source,
+            blocks=blocks,
+            links=links,
+            migration_state=migration_state,
+            unresolved_node_ids=unlinked_ids,
+        )
+
         return SourceMapEvidenceCompilation(
             logical_source_id=logical_source_id,
             source_id=source_id,
+            staging_version=staging_version,
             source_map_version=source_map_version,
             content_sha256=digest,
-            evidence_blocks=len(blocks),
-            alignment_links=len(links),
+            evidence_blocks=int(result["evidence_blocks"]),
+            alignment_links=int(result["links"]),
             linked_node_ids=sorted(linked_ids),
-            unlinked_node_ids=sorted(structural_ids - linked_ids),
+            unlinked_node_ids=unlinked_ids,
+            migration_state=migration_state,
         )
-
-    def _readiness(self, logical_source_id: str) -> dict[str, Any]:
-        response = self.client.rpc(
-            "mls_source_map_readiness",
-            {"p_logical_source_id": logical_source_id},
-        ).execute()
-        data = getattr(response, "data", None)
-        if isinstance(data, dict):
-            return data
-        if isinstance(data, list) and data and isinstance(data[0], dict):
-            return data[0]
-        raise RuntimeError("Source Map readiness RPC returned no result")
-
-    def _source_map_nodes(self, logical_source_id: str) -> list[SourceMapNode]:
-        rows = _data(
-            self.client.table(self.SOURCE_MAP)
-            .select("*")
-            .eq("logical_source_id", logical_source_id)
-            .order("order_index")
-            .execute()
-        )
-        if not rows:
-            raise RuntimeError("promoted Source Map has no runtime nodes")
-        return [SourceMapNode.model_validate(row) for row in rows]
 
     def _existing_evidence_count(self, source_id: str) -> int:
         response = (
@@ -243,9 +312,12 @@ class DriveSourceMapEvidenceCompiler:
         if source.provider != "google_drive":
             raise ValueError("source provider must be google_drive")
         metadata = self.fetcher.get_metadata(source.provider_file_id)
-        if metadata.size_bytes is not None and source.size_bytes is not None:
-            if metadata.size_bytes != source.size_bytes:
-                raise RuntimeError("Drive source size changed from registered source")
+        if (
+            metadata.size_bytes is not None
+            and source.size_bytes is not None
+            and metadata.size_bytes != source.size_bytes
+        ):
+            raise RuntimeError("Drive source size changed from registered source")
 
         with self.fetcher.materialize_pdf(source.provider_file_id) as path:
             return self.compiler.compile_path(
@@ -261,16 +333,12 @@ def _alignment_structure(
     *,
     source_id: str,
 ) -> list[StructureNode]:
-    """Create a transient alignment tree without changing Source Map locators.
-
-    Ancestors are retained only to preserve hierarchy. A node is alignable on
-    this physical source only when its promoted Source Map binding uses source_id.
-    No page_end is inferred.
-    """
+    """Create a transient alignment tree without inventing any locator."""
 
     by_id = {node.node_id: node for node in nodes}
     selected: set[str] = {
-        node.node_id for node in nodes
+        node.node_id
+        for node in nodes
         if node.source_id == source_id or node.kind == StructureKind.BOOK
     }
 
@@ -309,3 +377,40 @@ def _alignment_structure(
             )
         )
     return transient
+
+
+def _evidence_payload(block: SourceEvidenceBlock) -> dict[str, Any]:
+    return {
+        "evidence_id": block.evidence_id,
+        "structure_node_id": block.structure_node_id,
+        "block_index": block.block_index,
+        "page_index": block.page_index,
+        "page_label": block.page_label,
+        "content_type": block.content_type.value,
+        "text": block.text,
+        "asset_ref": block.asset_ref,
+        "bbox": list(block.bbox) if block.bbox is not None else None,
+        "parser": block.parser,
+        "parser_version": block.parser_version,
+        "content_sha256": block.content_sha256,
+    }
+
+
+def _link_payload(
+    link: EvidenceStructureLink,
+    block: SourceEvidenceBlock,
+) -> dict[str, Any]:
+    return {
+        "node_id": link.node_id,
+        "evidence_id": link.evidence_id,
+        "method": link.method.value,
+        "confidence": link.confidence,
+        "anchor_context": {
+            "pdf_page": block.pdf_page,
+            "page_index": block.page_index,
+            "bbox": list(block.bbox) if block.bbox is not None else None,
+            "content_sha256": block.content_sha256,
+            "parser": block.parser,
+            "parser_version": block.parser_version,
+        },
+    }

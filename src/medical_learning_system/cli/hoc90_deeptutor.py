@@ -75,17 +75,28 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
         .limit(1)
         .execute()
     )
+
     source = None
     source_map_readiness = None
+    evidence_status = None
+    evidence_migration_history = False
+    current_stage = None
+
     if logical_source_id:
         rows = _rows(
             client.table("mls_logical_sources")
-            .select("logical_source_id,title,source_map_state,source_map_version")
+            .select(
+                "logical_source_id,title,source_map_state,source_map_version,"
+                "promoted_staging_version"
+            )
             .eq("logical_source_id", logical_source_id)
             .limit(1)
             .execute()
         )
         source = rows[0] if rows else None
+        if source and source.get("promoted_staging_version") is not None:
+            current_stage = int(source["promoted_staging_version"])
+
         readiness_response = client.rpc(
             "mls_source_map_readiness",
             {"p_logical_source_id": logical_source_id},
@@ -100,13 +111,43 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
         ):
             source_map_readiness = raw_readiness[0]
 
-    # Readiness is source-specific. Evidence from another book must not make this
-    # source look runnable.
-    if logical_source_id:
+        history_rows = _rows(
+            client.table("mls_source_map_evidence_status")
+            .select(
+                "state,staging_version,legacy_fallback_disabled,"
+                "evidence_blocks,promoted_links"
+            )
+            .eq("logical_source_id", logical_source_id)
+            .eq("legacy_fallback_disabled", True)
+            .execute()
+        )
+        evidence_migration_history = bool(history_rows)
+        if current_stage is not None:
+            evidence_status = next(
+                (
+                    row
+                    for row in history_rows
+                    if int(row.get("staging_version") or -1) == current_stage
+                ),
+                None,
+            )
+
+    if logical_source_id and current_stage is not None:
         evidence_query = (
             client.table("mls_source_map_evidence_links")
             .select("evidence_id", count="exact")
             .eq("logical_source_id", logical_source_id)
+            .eq("staging_version", current_stage)
+            .eq("status", "promoted")
+            .limit(1)
+            .execute()
+        )
+    elif logical_source_id:
+        evidence_query = (
+            client.table("mls_source_map_evidence_links")
+            .select("evidence_id", count="exact")
+            .eq("logical_source_id", logical_source_id)
+            .eq("status", "promoted")
             .limit(1)
             .execute()
         )
@@ -117,6 +158,7 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
             .limit(1)
             .execute()
         )
+
     evidence_count = getattr(evidence_query, "count", None)
     if evidence_count is None:
         evidence_count = len(_rows(evidence_query))
@@ -126,8 +168,6 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
         blockers.append("no_active_blueprint")
     if not session_rows:
         blockers.append("no_active_or_paused_session")
-    if not evidence_count:
-        blockers.append("no_exact_source_map_evidence")
     if logical_source_id and (
         source is None
         or source_map_readiness is None
@@ -135,12 +175,22 @@ def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
     ):
         blockers.append("source_map_not_ready_for_hoc90")
 
+    if logical_source_id and evidence_migration_history and evidence_status is None:
+        blockers.append("source_map_evidence_stale")
+    elif evidence_status and evidence_status.get("state") == "review_required":
+        blockers.append("source_map_evidence_review_required")
+    elif evidence_status and evidence_status.get("state") == "stale":
+        blockers.append("source_map_evidence_stale")
+    elif not evidence_count:
+        blockers.append("no_exact_source_map_evidence")
+
     return {
         "ready": not blockers,
         "blockers": blockers,
         "active_blueprint": blueprint_rows[0] if blueprint_rows else None,
         "resumable_session": session_rows[0] if session_rows else None,
         "evidence_blocks": evidence_count,
+        "source_map_evidence_status": evidence_status,
         "logical_source": source,
         "source_map_readiness": source_map_readiness,
     }
@@ -162,7 +212,7 @@ async def _prepare(args, client) -> dict[str, object]:
         try:
             resolved = SupabaseHoc90SourceContextResolver(client).resolve(source_ref)
         except SourceContextUnavailable as exc:
-            raise SystemExit(f"SOURCE_GAP: {exc}") from exc
+            raise SystemExit(f"{exc.code.value}: {exc}") from exc
         source_context = resolved.passages
         page = resolved.page_start
 

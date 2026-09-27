@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 
@@ -15,18 +14,20 @@ from medical_learning_system.evidence_store import (
     make_evidence_block,
 )
 from medical_learning_system.source_map import SourceMapNode
-from medical_learning_system.source_registry import SourceKind, SourceRecord
 from medical_learning_system.source_map_evidence import (
+    SourceMapEvidenceMigrationState,
     SupabaseSourceMapEvidenceCompiler,
+    SupabaseSourceMapEvidenceLinkStore,
     _alignment_structure,
 )
+from medical_learning_system.source_registry import SourceKind, SourceRecord
 
 
 SOURCE_ID = "costanzo-physiology--physical"
 LOGICAL_ID = "costanzo-physiology"
 
 
-def source_record(content_sha256: str) -> SourceRecord:
+def source_record(content_sha256: str, *, size_bytes=9) -> SourceRecord:
     return SourceRecord(
         source_id=SOURCE_ID,
         logical_source_id=LOGICAL_ID,
@@ -34,7 +35,7 @@ def source_record(content_sha256: str) -> SourceRecord:
         provider_file_id="drive-costanzo",
         title="Costanzo Physiology.pdf",
         mime_type="application/pdf",
-        size_bytes=9,
+        size_bytes=size_bytes,
         modified_time=datetime(2026, 9, 27, tzinfo=timezone.utc),
         kind=SourceKind.TEXTBOOK,
         content_sha256=content_sha256,
@@ -96,10 +97,7 @@ def test_alignment_uses_promoted_heading_point_without_inferred_page_end():
     links = align_evidence_to_structure(structure, [heading, body])
 
     chapter_links = [link for link in links if link.node_id == "chapter-1"]
-    assert any(
-        link.method == AlignmentMethod.EXACT_HEADING
-        for link in chapter_links
-    )
+    assert any(link.method == AlignmentMethod.EXACT_HEADING for link in chapter_links)
     assert any(
         link.evidence_id == body.evidence_id
         and link.method == AlignmentMethod.HEADING_SEQUENCE
@@ -107,7 +105,7 @@ def test_alignment_uses_promoted_heading_point_without_inferred_page_end():
     )
 
 
-def test_unmatched_heading_does_not_invent_page_range_candidate():
+def test_unmatched_heading_does_not_invent_page_range():
     structure = _alignment_structure(
         map_nodes(title="Heading not present"),
         source_id=SOURCE_ID,
@@ -129,46 +127,71 @@ def test_unmatched_heading_does_not_invent_page_range_candidate():
 class FakeMedical:
     def __init__(self, source):
         self.source = source
-        self.replaced = None
 
     def get_source(self, source_id):
         return self.source if source_id == self.source.source_id else None
 
-    def replace_evidence(self, source_id, blocks):
-        self.replaced = (source_id, blocks)
+
+class FakeSourceMaps:
+    def __init__(self, nodes):
+        self.nodes = nodes
+        self.book = {
+            "logical_source_id": LOGICAL_ID,
+            "promoted_staging_version": 4,
+            "source_map_version": 2,
+        }
+        self.change_on_second_read = False
+        self.reads = 0
+
+    def get_readiness(self, logical_source_id):
+        return {"ready_for_hoc90": True}
+
+    def get_logical_source(self, logical_source_id):
+        self.reads += 1
+        if self.change_on_second_read and self.reads > 1:
+            return {
+                **self.book,
+                "promoted_staging_version": 5,
+                "source_map_version": 3,
+            }
+        return dict(self.book)
+
+    def get_source_map(self, logical_source_id):
+        return [node.model_dump(mode="json") for node in self.nodes]
 
 
 class FakeLinks:
     def __init__(self):
-        self.replaced = None
+        self.committed = None
 
-    def replace_source(self, **kwargs):
-        self.replaced = kwargs
+    def commit_source(self, **kwargs):
+        self.committed = kwargs
+        return {
+            "evidence_blocks": len(kwargs["blocks"]),
+            "links": len(kwargs["links"]),
+            "state": kwargs["migration_state"].value,
+            "staging_version": kwargs["staging_version"],
+            "source_map_version": kwargs["source_map_version"],
+        }
 
 
 class CompilerUnderTest(SupabaseSourceMapEvidenceCompiler):
     def __init__(self, source, nodes, *, existing=0):
         self.client = object()
         self.medical = FakeMedical(source)
+        self.source_maps = FakeSourceMaps(nodes)
         self.links = FakeLinks()
-        self._nodes = nodes
         self._existing = existing
-
-    def _readiness(self, logical_source_id):
-        return {"ready_for_hoc90": True, "current_version": 2}
-
-    def _source_map_nodes(self, logical_source_id):
-        return self._nodes
 
     def _existing_evidence_count(self, source_id):
         return self._existing
 
 
-def test_compiler_fails_before_writes_on_fingerprint_mismatch(tmp_path):
+def test_compiler_fails_before_commit_on_fingerprint_mismatch(tmp_path):
     path = tmp_path / "source.pdf"
     path.write_bytes(b"wrong bytes")
     compiler = CompilerUnderTest(
-        source_record("0" * 64),
+        source_record("0" * 64, size_bytes=len(b"wrong bytes")),
         map_nodes(),
     )
 
@@ -179,8 +202,7 @@ def test_compiler_fails_before_writes_on_fingerprint_mismatch(tmp_path):
             path=path,
         )
 
-    assert compiler.medical.replaced is None
-    assert compiler.links.replaced is None
+    assert compiler.links.committed is None
 
 
 def test_compiler_requires_explicit_replacement_authorization(tmp_path, monkeypatch):
@@ -200,10 +222,10 @@ def test_compiler_requires_explicit_replacement_authorization(tmp_path, monkeypa
             path=path,
         )
 
-    assert compiler.medical.replaced is None
+    assert compiler.links.committed is None
 
 
-def test_compiler_persists_evidence_and_promoted_map_links(tmp_path, monkeypatch):
+def test_compiler_commits_exact_evidence_against_immutable_stage(tmp_path, monkeypatch):
     path = tmp_path / "source.pdf"
     path.write_bytes(b"canonical")
     compiler = CompilerUnderTest(
@@ -217,6 +239,7 @@ def test_compiler_persists_evidence_and_promoted_map_links(tmp_path, monkeypatch
         content_type=EvidenceContentType.TEXT,
         parser="test",
         text="1 Cellular Physiology",
+        bbox=(10.0, 10.0, 200.0, 30.0),
     )
     link = EvidenceStructureLink(
         evidence_id=block.evidence_id,
@@ -227,16 +250,8 @@ def test_compiler_persists_evidence_and_promoted_map_links(tmp_path, monkeypatch
     )
 
     monkeypatch.setattr(sme, "sha256_file", lambda _: "a" * 64)
-    monkeypatch.setattr(
-        sme,
-        "parsed_document_from_native_pdf",
-        lambda _: object(),
-    )
-    monkeypatch.setattr(
-        sme,
-        "materialize_evidence_only",
-        lambda **_: [block],
-    )
+    monkeypatch.setattr(sme, "parsed_document_from_native_pdf", lambda _: object())
+    monkeypatch.setattr(sme, "materialize_evidence_only", lambda **_: [block])
     monkeypatch.setattr(
         sme,
         "align_evidence_to_structure",
@@ -249,9 +264,115 @@ def test_compiler_persists_evidence_and_promoted_map_links(tmp_path, monkeypatch
         path=path,
     )
 
-    assert compiler.medical.replaced == (SOURCE_ID, [block])
-    assert compiler.links.replaced["logical_source_id"] == LOGICAL_ID
-    assert compiler.links.replaced["source_map_version"] == 2
-    assert compiler.links.replaced["links"] == [link]
+    committed = compiler.links.committed
+    assert committed is not None
+    assert committed["staging_version"] == 4
+    assert committed["source_map_version"] == 2
+    assert committed["blocks"] == [block]
+    assert committed["links"] == [link]
+    assert committed["migration_state"] == SourceMapEvidenceMigrationState.COMPLETE
     assert result.linked_node_ids == ["chapter-1"]
     assert result.unlinked_node_ids == []
+    assert result.staging_version == 4
+
+
+def test_compiler_rechecks_promotion_before_atomic_commit(tmp_path, monkeypatch):
+    path = tmp_path / "source.pdf"
+    path.write_bytes(b"canonical")
+    compiler = CompilerUnderTest(
+        source_record("a" * 64),
+        map_nodes(),
+    )
+    compiler.source_maps.change_on_second_read = True
+    monkeypatch.setattr(sme, "sha256_file", lambda _: "a" * 64)
+    monkeypatch.setattr(sme, "parsed_document_from_native_pdf", lambda _: object())
+    monkeypatch.setattr(sme, "materialize_evidence_only", lambda **_: [])
+    monkeypatch.setattr(sme, "align_evidence_to_structure", lambda *_: [])
+
+    with pytest.raises(RuntimeError, match="promotion changed"):
+        compiler.compile_path(
+            logical_source_id=LOGICAL_ID,
+            source_id=SOURCE_ID,
+            path=path,
+        )
+
+    assert compiler.links.committed is None
+
+
+class Response:
+    def __init__(self, data):
+        self.data = data
+
+
+class Rpc:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def execute(self):
+        return Response(
+            {
+                "evidence_blocks": len(self.payload["p_evidence"]),
+                "links": len(self.payload["p_links"]),
+                "state": self.payload["p_migration_state"],
+                "staging_version": self.payload["p_staging_version"],
+                "source_map_version": self.payload["p_source_map_version"],
+            }
+        )
+
+
+class RpcClient:
+    def __init__(self):
+        self.calls = []
+
+    def rpc(self, name, payload):
+        self.calls.append((name, payload))
+        return Rpc(payload)
+
+
+def test_store_sends_atomic_payload_with_spatial_provenance():
+    client = RpcClient()
+    store = SupabaseSourceMapEvidenceLinkStore(client)
+    source = source_record("a" * 64)
+    block = make_evidence_block(
+        source_id=SOURCE_ID,
+        block_index=0,
+        page_index=7,
+        content_type=EvidenceContentType.TEXT,
+        parser="test",
+        parser_version="1",
+        text="1 Cellular Physiology",
+        bbox=(10.0, 20.0, 100.0, 40.0),
+    )
+    link = EvidenceStructureLink(
+        evidence_id=block.evidence_id,
+        source_id=SOURCE_ID,
+        node_id="chapter-1",
+        method=AlignmentMethod.EXACT_HEADING,
+        confidence=1.0,
+    )
+
+    store.commit_source(
+        logical_source_id=LOGICAL_ID,
+        staging_version=4,
+        source_map_version=2,
+        source=source,
+        blocks=[block],
+        links=[link],
+        migration_state=SourceMapEvidenceMigrationState.PARTIAL,
+        unresolved_node_ids=["section-2"],
+    )
+
+    name, payload = client.calls[0]
+    assert name == "mls_commit_source_map_evidence"
+    assert payload["p_staging_version"] == 4
+    assert payload["p_links"][0]["anchor_context"]["pdf_page"] == 8
+    assert payload["p_links"][0]["anchor_context"]["bbox"] == [
+        10.0,
+        20.0,
+        100.0,
+        40.0,
+    ]
+    assert (
+        payload["p_links"][0]["anchor_context"]["content_sha256"]
+        == block.content_sha256
+    )
