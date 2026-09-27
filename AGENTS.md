@@ -42,6 +42,14 @@ These rules apply before an agent creates or starts a mutable work item:
 6. Progress messages are not new work items. Resume from the latest valid checkpoint and process only unfinished or invalidated units.
 7. When duplicate issues are discovered, preserve conflicting evidence and provenance in the retained issue before closing duplicates. Never resolve a source disagreement merely by choosing the newest issue.
 
+## Project context bootstrap
+
+For any MLS architecture, Source Map, HỌC90 runtime, or corpus task, read
+`docs/PROJECT_CONTEXT.md` after this file. Treat its dated checkpoint as orientation
+only: refresh current `main`, the exact work item/work key, live Supabase state, and
+assigned Drive evidence before acting. Never use a stale checkpoint count/status as
+permission to write, certify, promote, or infer missing source evidence.
+
 ## Medical Learning System invariants
 
 These rules override code-minimization when safety, provenance, or learner-state integrity requires more structure:
