@@ -4,7 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import fitz
+import pytest
 
 
 SCRIPT = (
@@ -28,6 +28,7 @@ def test_chapter_regex_recognizes_numeric_markers_only():
 
 
 def test_chapter_markers_keeps_only_required_chapters_1_through_67(tmp_path):
+    fitz = pytest.importorskip("fitz")
     path = tmp_path / "markers.pdf"
     doc = fitz.open()
     page = doc.new_page()
@@ -97,3 +98,9 @@ def test_source_manifest_stays_exact_and_complete():
     assert [row[0] for row in audit.SOURCE_MANIFEST] == list(range(1, 21))
     assert len({row[1] for row in audit.SOURCE_MANIFEST}) == 20
     assert all(len(row[3]) == 64 for row in audit.SOURCE_MANIFEST)
+
+
+def test_missing_pdf_tooling_fails_clearly(monkeypatch):
+    monkeypatch.setattr(audit, "fitz", None)
+    with pytest.raises(RuntimeError, match="PyMuPDF"):
+        audit.require_fitz()
