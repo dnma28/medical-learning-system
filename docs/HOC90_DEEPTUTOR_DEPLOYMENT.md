@@ -56,8 +56,8 @@ mls-hoc90-deeptutor submit <session-id> <interaction-id> \
 
 ## Source policy
 
-Automatic preparation resolves only evidence explicitly linked to the current
-`source_id + source_map_node_id`. It does not semantic-search another section, guess a
+Automatic preparation resolves promoted Source Map evidence explicitly linked to the current
+`logical_source_id + source_id + source_map_node_id`; legacy structure links are compatibility-only. It does not semantic-search another section, guess a
 page range, or substitute another book.
 
 If no exact linked evidence exists, the command exits with `SOURCE_GAP`.
@@ -116,7 +116,7 @@ blockers are:
 
 - `no_active_blueprint`
 - `no_active_or_paused_session`
-- `no_evidence_blocks`
-- `source_map_not_promoted`
+- `no_exact_source_map_evidence`
+- `source_map_not_ready_for_hoc90`
 
 These are project-state blockers, not reasons to weaken source provenance.
