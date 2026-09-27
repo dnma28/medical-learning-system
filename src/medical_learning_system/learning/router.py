@@ -45,7 +45,8 @@ class RoutingContext(BaseModel):
     session_start: bool = False
     source_spine: str | None = None
     current_toc_item: str | None = None
-    current_learning_value: LearningValue = LearningValue.CORE_MASTERY
+    # None means the Source Map is still curriculum-neutral.
+    current_learning_value: LearningValue | None = None
 
     due_retrieval_concept_ids: list[str] = Field(default_factory=list)
     weak_required_prerequisite_ids: list[str] = Field(default_factory=list)
