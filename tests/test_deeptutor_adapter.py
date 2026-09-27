@@ -19,27 +19,50 @@ def _decision(action: AdaptiveAction) -> RoutingDecision:
     )
 
 
-def test_retrieval_routes_to_question_generation_without_state_write():
+def test_free_retrieval_stays_mls_native():
     task = DeepTutorHoc90Adapter().build_task(
         _decision(AdaptiveAction.START_RETRIEVAL),
         source_context=["verified passage"],
     )
-    assert task.capability == DeepTutorCapability.DEEP_QUESTION
-    assert task.source_context == ["verified passage"]
+    assert task.capability == DeepTutorCapability.MLS_NATIVE
     assert task.may_write_learner_state is False
     assert task.may_write_medical_truth is False
+    assert task.automatic_mastery_credit is False
 
 
 def test_source_spine_routes_to_guided_learning():
     task = DeepTutorHoc90Adapter().build_task(
-        _decision(AdaptiveAction.CONTINUE_SOURCE_SPINE)
+        _decision(AdaptiveAction.CONTINUE_SOURCE_SPINE),
+        source_context=["verified passage"],
     )
     assert task.capability == DeepTutorCapability.GUIDED_LEARNING
 
 
-def test_current_evidence_stays_under_mls_control():
+def test_prerequisite_repair_can_use_source_grounded_guidance():
     task = DeepTutorHoc90Adapter().build_task(
-        _decision(AdaptiveAction.VERIFY_CURRENT_EVIDENCE)
+        _decision(AdaptiveAction.PREREQUISITE_REPAIR),
+        source_context=["verified prerequisite passage"],
     )
-    assert task.capability == DeepTutorCapability.AGENT_LOOP
-    assert any("current clinical" in item for item in task.instructions)
+    assert task.capability == DeepTutorCapability.GUIDED_LEARNING
+
+
+def test_error_transfer_and_current_evidence_stay_mls_native():
+    adapter = DeepTutorHoc90Adapter()
+    for action in (
+        AdaptiveAction.ERROR_REMEDIATION,
+        AdaptiveAction.TRANSFER,
+        AdaptiveAction.SOURCE_RECOVERY,
+        AdaptiveAction.VERIFY_CURRENT_EVIDENCE,
+    ):
+        task = adapter.build_task(_decision(action), source_context=["verified passage"])
+        assert task.capability == DeepTutorCapability.MLS_NATIVE
+
+
+def test_reading_quiz_is_explicitly_recognition_only():
+    task = DeepTutorHoc90Adapter().build_reading_quiz(
+        _decision(AdaptiveAction.CONTINUE_SOURCE_SPINE),
+        source_context=["verified passage"],
+    )
+    assert task.capability == DeepTutorCapability.READING_QUIZ
+    assert task.evidence_ceiling == "M1"
+    assert task.automatic_mastery_credit is False
