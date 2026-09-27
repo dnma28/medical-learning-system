@@ -129,23 +129,7 @@ begin
             or (n.value->>'locator_kind' = 'point'
                 and (n.value->>'page_end' is not null
                     or (n.value->>'page_start' is not null
-                        and (n.value->>'page_start' !~ '^[1-9][0-9]*
-            or (n.value->>'locator_kind' = 'verified_range'
-                and (n.value->>'page_start' is null
-                  or n.value->>'page_end' is null
-                  or n.value->>'page_start' !~ '^[1-9][0-9]*$'
-                  or n.value->>'page_end' !~ '^[1-9][0-9]*$'
-                  or (n.value->>'page_end')::int < (n.value->>'page_start')::int
-                  or n.value->'source_anchor'->>'scope'
-                     is distinct from 'verified_section_range'))
-            or (n.value->>'locator_kind' = 'point'
-                and n.value->>'page_start' is null
-                and n.value->'source_anchor'->>'char_start' is null))
-    ) then raise exception 'physical binding, fingerprint or locator QA invalid'; end if;
-    return s.payload_sha256;
-end;
-$$;
-))
+                        and (n.value->>'page_start' !~ '^[1-9][0-9]*$'))
                     or (
                         n.value->'source_anchor'->>'scope'
                             is distinct from 'heading_point_not_section_range'
@@ -172,23 +156,7 @@ $$;
                                 n.value->'source_anchor'->>'pdf_page',''
                             ) is null
                             or n.value->'source_anchor'->>'pdf_page'
-                                !~ '^[1-9][0-9]*
-            or (n.value->>'locator_kind' = 'verified_range'
-                and (n.value->>'page_start' is null
-                  or n.value->>'page_end' is null
-                  or n.value->>'page_start' !~ '^[1-9][0-9]*$'
-                  or n.value->>'page_end' !~ '^[1-9][0-9]*$'
-                  or (n.value->>'page_end')::int < (n.value->>'page_start')::int
-                  or n.value->'source_anchor'->>'scope'
-                     is distinct from 'verified_section_range'))
-            or (n.value->>'locator_kind' = 'point'
-                and n.value->>'page_start' is null
-                and n.value->'source_anchor'->>'char_start' is null))
-    ) then raise exception 'physical binding, fingerprint or locator QA invalid'; end if;
-    return s.payload_sha256;
-end;
-$$;
-
+                                !~ '^[1-9][0-9]*$'
                             or n.value->'source_anchor'->>'pdf_page'
                                 is distinct from n.value->>'page_start'
                         )
