@@ -26,7 +26,12 @@ Unit from bookmark depth.
   evidence, a reviewer and QA run, TOC reconciliation digest, all six QA flags,
   matching count of required node identities, valid tree, source bindings,
   current physical SHA-256, extraction fingerprints/versions and verified
-  heading points or verified ranges. The audit metadata must attest zero
+  point locators or verified ranges. Point locators retain
+  `heading_point_not_section_range` for exact body headings. A distinct
+  `toc_identity_point_not_section_range` is permitted only for exact publisher
+  Contents/TOC structural identities with no standalone body heading; it
+  requires exact identity text, publisher Contents/TOC surface, explicit
+  `body_heading_absent=true`, matching physical PDF page and `page_end=NULL`. The audit metadata must attest zero
   required REVIEW_REQUIRED/SOURCE_GAP cases and zero unclassified outline
   observations; staged node issue lists must be empty. Every staged node must
   be required and verified for this full-book certificate. The certificate records the exact
@@ -48,7 +53,8 @@ Unit from bookmark depth.
   fingerprints. An older `section_anchored`, `deep_anchored` or
   `ready_for_hoc90` catalog label is reported only as historical metadata.
   `LogicalSourceMap.completeness()` remains fail-closed because it has no
-  database certificate. A heading point does not claim full section range.
+  database certificate. Neither a heading point nor a publisher Contents/TOC
+  identity point claims a full section range.
 
 ## Verification and rollout
 

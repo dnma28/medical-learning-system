@@ -29,6 +29,15 @@ Exclusion from `toc_denominator` is not omission. Pedagogically relevant supplem
 - Internal source evidence overrides filename assumptions.
 - Candidate count or bookmark count is never a denominator.
 - Point heading locator is not a section range.
+- `heading_point_not_section_range` remains the point semantic for an exact source body heading.
+- `toc_identity_point_not_section_range` is allowed only for a required structural
+  Part/Unit/Chapter/Section/Subsection whose exact identity is physically present in the
+  publisher Contents/TOC but has no standalone body heading. It is a point, never a range:
+  `page_end` stays NULL. The anchor must record `publisher_surface` as `contents` or
+  `toc`, exact `identity_text` equal to the staged node title,
+  `body_heading_absent=true`, and an exact positive `pdf_page` equal to `page_start`.
+  Physical source ID/SHA-256 and extraction provenance remain mandatory. Semantic/fuzzy
+  placement, inferred locations, and arbitrary point scopes are not accepted.
 - Never infer `page_end`.
 - PART/UNIT hierarchy must not be flattened.
 - Every denominator inclusion/exclusion must be explainable from source structure.

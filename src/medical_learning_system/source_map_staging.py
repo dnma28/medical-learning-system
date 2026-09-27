@@ -25,6 +25,11 @@ class LocatorKind(str, Enum):
     VERIFIED_RANGE = "verified_range"
 
 
+class PointLocatorScope(str, Enum):
+    HEADING = "heading_point_not_section_range"
+    TOC_IDENTITY = "toc_identity_point_not_section_range"
+
+
 class StagingNode(BaseModel):
     node_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
@@ -59,6 +64,30 @@ class StagingNode(BaseModel):
             raise ValueError("point locator cannot claim a range")
         if self.locator_kind == LocatorKind.VERIFIED_RANGE and self.page_end is None:
             raise ValueError("verified range needs an evidenced page_end")
+        if (
+            self.locator_kind == LocatorKind.POINT
+            and self.status == StagingStatus.VERIFIED
+            and self.source_anchor.get("scope") == PointLocatorScope.TOC_IDENTITY.value
+        ):
+            structural_kinds = {
+                StructureKind.PART,
+                StructureKind.UNIT,
+                StructureKind.CHAPTER,
+                StructureKind.SECTION,
+                StructureKind.SUBSECTION,
+            }
+            if self.kind not in structural_kinds:
+                raise ValueError("TOC identity point requires a structural node kind")
+            if self.page_start is None:
+                raise ValueError("TOC identity point requires page_start")
+            if self.source_anchor.get("publisher_surface") not in {"contents", "toc"}:
+                raise ValueError("TOC identity point requires publisher Contents/TOC surface")
+            if self.source_anchor.get("identity_text") != self.title:
+                raise ValueError("TOC identity point requires exact identity_text")
+            if self.source_anchor.get("body_heading_absent") is not True:
+                raise ValueError("TOC identity point requires body_heading_absent=true")
+            if self.source_anchor.get("pdf_page") != self.page_start:
+                raise ValueError("TOC identity point pdf_page must match page_start")
         return self
 
 
