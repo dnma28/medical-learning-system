@@ -12,10 +12,10 @@ A new session may reference:
 - `source_map_node_id` — the mapped chapter/section/subsection;
 - `source_id` — the exact physical Drive file when known;
 - `source_anchor` — page/locator metadata;
-- `learning_value` — CORE_MASTERY / SUPPORTING / REFERENCE_ONLY / CURRENT_CLINICAL_CHECK;
+- `learning_value` — nullable. `null` preserves curriculum-neutral Source Map structure; explicit roles are CORE_MASTERY / SUPPORTING / REFERENCE_ONLY / CURRENT_CLINICAL_CHECK;
 - `freshness_required` — current-validity requirement.
 
-Legacy sessions containing plain source strings remain readable.
+Legacy sessions containing plain source strings remain readable. `SourceSpineRef` never defaults a missing learning role to CORE_MASTERY. When a ref is created from a Source Map node, the node's exact nullable `learning_value` is preserved.
 
 ## Runtime order
 
