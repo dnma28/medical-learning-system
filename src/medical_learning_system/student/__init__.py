@@ -22,4 +22,19 @@ __all__ = [
     "MasteryState",
     "RetrievalRating",
     "SpacedRetrievalState",
+    "ClinicalReasoningEvidence",
+    "ClinicalReasoningFramework",
+    "ClinicalReasoningTask",
+    "SkillNode",
+    "SkillState",
+    "build_clinical_transfer_event",
 ]
+
+from .skills import (
+    ClinicalReasoningEvidence,
+    ClinicalReasoningFramework,
+    ClinicalReasoningTask,
+    SkillNode,
+    SkillState,
+    build_clinical_transfer_event,
+)
