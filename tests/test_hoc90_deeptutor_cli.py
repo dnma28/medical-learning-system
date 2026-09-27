@@ -102,11 +102,23 @@ def base_tables():
                 "title": "Costanzo Physiology",
                 "source_map_state": "unmapped",
                 "source_map_version": 1,
+                "promoted_staging_version": 3,
+            }
+        ],
+        "mls_source_map_evidence_status": [
+            {
+                "logical_source_id": "costanzo-physiology",
+                "staging_version": 3,
+                "state": "ready",
+                "evidence_blocks": 10,
+                "promoted_links": 20,
             }
         ],
         "mls_source_map_evidence_links": [
             {
                 "logical_source_id": "costanzo-physiology",
+                "staging_version": 3,
+                "status": "promoted",
                 "evidence_id": "ev-1",
             }
         ],
@@ -137,6 +149,8 @@ def test_readiness_requires_evidence_for_requested_logical_source():
     tables["mls_source_map_evidence_links"] = [
         {
             "logical_source_id": "kandel-principles-neural-science",
+            "staging_version": 3,
+            "status": "promoted",
             "evidence_id": "other",
         }
     ]
@@ -154,3 +168,22 @@ def test_readiness_requires_evidence_for_requested_logical_source():
 
     assert result["ready"] is False
     assert "no_exact_source_map_evidence" in result["blockers"]
+
+
+def test_readiness_blocks_when_current_evidence_migration_is_not_ready():
+    tables = base_tables()
+    tables["mls_source_map_evidence_status"][0]["state"] = "review_required"
+    result = _readiness(
+        Client(
+            tables,
+            {
+                "logical_source_id": "costanzo-physiology",
+                "ready_for_hoc90": True,
+                "current_version": 1,
+            },
+        ),
+        "costanzo-physiology",
+    )
+
+    assert result["ready"] is False
+    assert "source_map_evidence_not_ready" in result["blockers"]
