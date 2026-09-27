@@ -326,6 +326,61 @@ begin
         raise exception 'duplicate evidence identity or block index';
     end if;
 
+    -- Recompute the deterministic evidence hash/id contract in PostgreSQL so
+    -- a buggy backend cannot pair arbitrary text with a plausible declared hash.
+    if exists (
+        with normalized as (
+            select
+                x.value,
+                pg_catalog.regexp_replace(
+                    pg_catalog.btrim(coalesce(x.value->>'text', '')),
+                    '\\s+', ' ', 'g'
+                ) as normalized_text
+            from pg_catalog.jsonb_array_elements(p_evidence) x
+        ),
+        digested as (
+            select
+                value,
+                pg_catalog.encode(
+                    pg_catalog.sha256(
+                        pg_catalog.convert_to(
+                            case
+                                when normalized_text <> '' then
+                                    value->>'content_type' || '|' || normalized_text
+                                else value->>'content_type'
+                            end,
+                            'UTF8'
+                        )
+                    ),
+                    'hex'
+                ) as expected_content_sha256
+            from normalized
+        )
+        select 1
+        from digested
+        where value->>'content_sha256' is distinct from expected_content_sha256
+           or value->>'evidence_id' is distinct from (
+                'ev-' || pg_catalog.substr(
+                    pg_catalog.encode(
+                        pg_catalog.sha256(
+                            pg_catalog.convert_to(
+                                p_source_id || '|' ||
+                                (value->>'page_index') || '|' ||
+                                (value->>'block_index') || '|' ||
+                                (value->>'content_type') || '|' ||
+                                expected_content_sha256,
+                                'UTF8'
+                            )
+                        ),
+                        'hex'
+                    ),
+                    1, 24
+                )
+           )
+    ) then
+        raise exception 'evidence content hash or deterministic evidence_id mismatch';
+    end if;
+
     -- One transaction: deleting old evidence cascades its old links/embeddings,
     -- then exact evidence and current-version links are rebuilt together.
     delete from public.mls_evidence_blocks
