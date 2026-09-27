@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from medical_learning_system.hoc90.session import (
     Hoc90Session,
     LearningEvent,
@@ -35,6 +37,7 @@ class FakeQuery:
         self.table = table
         self.filters = []
         self.in_filters = []
+        self.lte_filters = []
         self.mode = "select"
         self.payload = None
         self.limit_count = None
@@ -52,6 +55,10 @@ class FakeQuery:
 
     def in_(self, field, values):
         self.in_filters.append((field, set(values)))
+        return self
+
+    def lte(self, field, value):
+        self.lte_filters.append((field, value))
         return self
 
     def order(self, field, desc=False):
@@ -106,6 +113,10 @@ class FakeQuery:
             for row in rows
             if all(row.get(field) == value for field, value in self.filters)
             and all(row.get(field) in values for field, values in self.in_filters)
+            and all(
+                row.get(field) is not None and row.get(field) <= value
+                for field, value in self.lte_filters
+            )
         ]
         if self.order_field:
             matched.sort(
@@ -270,3 +281,43 @@ def test_learning_events_are_append_only():
         pass
     else:
         raise AssertionError("duplicate event IDs must not overwrite history")
+
+
+def test_fsrs_due_retrieval_flows_from_event_store_into_router():
+    client = FakeClient()
+    store = SupabaseLearningStateStore(client)
+    session = make_session().start()
+    store.save_session(session)
+
+    reviewed_at = datetime(2026, 9, 27, 2, 0, tzinfo=timezone.utc)
+    event = LearningEvent(
+        event_id="retrieval-fsrs-1",
+        session_id=session.session_id,
+        event_type=LearningEventType.RETRIEVAL,
+        concept_id="electrochemical-gradient",
+        outcome="correct",
+        hint_level=0,
+        metadata={
+            "retrieval_independent": True,
+            "retrieval_rating": "good",
+        },
+        created_at=reviewed_at,
+    )
+    store.append_event(event)
+    scheduled = store.apply_spaced_retrieval_event(event)
+
+    assert scheduled.next_review is not None
+    assert scheduled.next_review > reviewed_at
+    assert scheduled.mastery_level == MasteryLevel.M0
+
+    decision = LearningRouter().route_next_from_state(
+        RoutingContext(
+            session_start=True,
+            source_spine="costanzo-6e/ch1",
+        ),
+        due_retrieval_provider=store,
+        as_of=scheduled.next_review,
+    )
+
+    assert decision.action == AdaptiveAction.START_RETRIEVAL
+    assert decision.target_ids == ["electrochemical-gradient"]
