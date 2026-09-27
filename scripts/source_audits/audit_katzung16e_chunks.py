@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-import fitz
 
 LOGICAL_SOURCE_ID = "katzung-basic-clinical-pharmacology"
 
@@ -69,7 +68,9 @@ SUPPLEMENT_RE = re.compile(
 CONTINUATION_RE = re.compile(r"^(?:\(?continued\)?|continued\b)", re.IGNORECASE)
 LETTERED_RE = re.compile(r"^[A-Z]\.(?:\s|$)")
 NUMBERED_RE = re.compile(r"^\d+\.(?:\s|$)")
-CHAPTER_RE = re.compile(r"^\s*CHAPTER\s+(\d{1,2})\b", re.IGNORECASE)
+# Chapter-opening diagnostic: exact uppercase source header, with title text.
+# This deliberately rejects prose cross-references such as "Chapter 24)".
+CHAPTER_RE = re.compile(r"^\s*CHAPTER\s+(\d{1,2})\s+\S")
 BOLD_FONT_RE = re.compile(r"(?:bold|semibold|black|demi)", re.IGNORECASE)
 FOLIO_RE = re.compile(r"^\s*(\d{1,4})\s*$")
 
@@ -313,8 +314,9 @@ def infer_folio_mapping(doc) -> dict:
 
 
 def chapter_markers(doc) -> list[dict]:
+    """Return at most one conservative chapter-opening marker per chunk."""
     markers = []
-    seen = set()
+    seen: set[int] = set()
     for page_index in range(doc.page_count):
         text = doc[page_index].get_text("text")
         for raw_line in text.splitlines():
@@ -325,10 +327,9 @@ def chapter_markers(doc) -> list[dict]:
             chapter = int(match.group(1))
             if not 1 <= chapter <= 67:
                 continue
-            key = (chapter, page_index, norm(line))
-            if key in seen:
+            if chapter in seen:
                 continue
-            seen.add(key)
+            seen.add(chapter)
             markers.append(
                 {
                     "chapter": chapter,
@@ -358,6 +359,8 @@ def reconstruct_candidate_parents(observations: list[dict]) -> None:
 
 
 def audit_part(spec: SourceSpec, path: Path) -> tuple[dict, list[dict]]:
+    import fitz
+
     if path.stat().st_size != spec.size_bytes:
         raise AssertionError(
             f"part {spec.part_index} size mismatch: {path.stat().st_size}"
@@ -457,6 +460,8 @@ def seam_audit(part_summaries: list[dict]) -> list[dict]:
 
 
 def main(directory: str) -> None:
+    import fitz
+
     root = Path(directory)
     specs = [SourceSpec(*row) for row in SOURCE_MANIFEST]
 
