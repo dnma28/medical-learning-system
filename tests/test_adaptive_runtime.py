@@ -21,6 +21,7 @@ from medical_learning_system.student.models import (
     LearnerError,
     MasteryLevel,
 )
+from medical_learning_system.student.skills import SkillNode, SkillState
 from medical_learning_system.supabase_learning_state import (
     SupabaseLearningStateStore,
 )
@@ -321,3 +322,34 @@ def test_fsrs_due_retrieval_flows_from_event_store_into_router():
 
     assert decision.action == AdaptiveAction.START_RETRIEVAL
     assert decision.target_ids == ["electrochemical-gradient"]
+
+
+def test_skill_tree_state_roundtrips_without_touching_concept_mastery():
+    store = SupabaseLearningStateStore(FakeClient())
+    node = SkillNode(
+        skill_node_id="clinical-reasoning:hoac-ii",
+        vi_name="Suy luận HOAC II",
+        english_alias="HOAC II reasoning",
+        domain="clinical_reasoning",
+        required_prerequisites=["mechanism-explanation"],
+        unlock_rule={"requires": ["M3"]},
+    )
+    state = SkillState(
+        skill_node_id=node.skill_node_id,
+        mastery_level=MasteryLevel.M2,
+        current_strength=0.4,
+        forgetting_risk=0.2,
+        evidence_summary={"event_ids": ["clinical-event-1"]},
+    )
+
+    store.upsert_skill_node(node)
+    store.upsert_skill_state(state)
+
+    loaded_node = store.get_skill_node(node.skill_node_id)
+    loaded_state = store.get_skill_state(node.skill_node_id)
+
+    assert loaded_node is not None
+    assert loaded_node.domain == "clinical_reasoning"
+    assert loaded_state is not None
+    assert loaded_state.mastery_level == MasteryLevel.M2
+    assert store.get_mastery("clinical-reasoning:hoac-ii") is None
