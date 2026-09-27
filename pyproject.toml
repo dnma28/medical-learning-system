@@ -39,6 +39,7 @@ mls-worker-once = "medical_learning_system.cli.worker_once:main"
 mls-kg-v5-audit = "medical_learning_system.cli.kg_v5_audit:main"
 mls-sync-source-catalog = "medical_learning_system.cli.sync_source_catalog:main"
 mls-hoc90-deeptutor = "medical_learning_system.cli.hoc90_deeptutor:main"
+mls-compile-source-map-evidence = "medical_learning_system.cli.compile_source_map_evidence:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
