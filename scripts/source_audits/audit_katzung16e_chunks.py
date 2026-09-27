@@ -69,7 +69,8 @@ SUPPLEMENT_RE = re.compile(
 CONTINUATION_RE = re.compile(r"^(?:\(?continued\)?|continued\b)", re.IGNORECASE)
 LETTERED_RE = re.compile(r"^[A-Z]\.(?:\s|$)")
 NUMBERED_RE = re.compile(r"^\d+\.(?:\s|$)")
-CHAPTER_RE = re.compile(r"^\s*(\d{1,2})\s+\S")
+CHAPTER_RE = re.compile(r"^\\s*CHAPTER\\s+(\\d{1,2})\\b", re.IGNORECASE)
+BOLD_FONT_RE = re.compile(r"(?:bold|semibold|black|demi)", re.IGNORECASE)
 FOLIO_RE = re.compile(r"^\s*(\d{1,4})\s*$")
 
 
