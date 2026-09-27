@@ -47,4 +47,6 @@ Prefer batch deterministic extraction and small review queues. Run models on amb
 
 ## Current priority
 
-For milestone #97, the architecture/staging RPC exists, but the corpus still needs source identity, complete TOC denominators, verified hierarchy and locators, and independent QA for 16 logical books. Split extraction by book or nonoverlapping batch; keep reviews serial per book. Complete a single pilot before any full-corpus promotion. Do not use MarkItDown to turn uncertain PDF locators into `verified`.
+Milestone #97 remains **Complete Source Maps — 16 logical books**. The Costanzo pilot has passed end-to-end, so the operating mode is now serial book closure using the same immutable staging → independent review → certificate → explicit single-book promotion contract. Refresh live readiness before choosing work; do not infer the queue from dated counts.
+
+As of the 2026-09-27 live refresh, Costanzo, Kandel and Magee are promoted and `ready_for_hoc90`. Neumann and Junqueira remain blocked by explicit source/access/review gaps; Katzung #124 is the next input-ready serial target. See `SOURCE_MAP_EXECUTION_PLAN.md` for resume/no-progress rules and the corpus transition gate. Do not bulk-promote, infer `page_end`, or use MarkItDown to turn uncertain PDF locators into `verified`.
