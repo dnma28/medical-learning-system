@@ -7,6 +7,7 @@ from .hoc90.blueprint import BlueprintStatus, Hoc90Blueprint
 from .hoc90.session import Hoc90Session, LearningEvent, SessionStatus, SourceSpineRef
 from .student.models import ConceptMastery, LearnerError
 from .student.spaced_retrieval import FsrsSpacedRetrievalScheduler
+from .student.skills import SkillNode, SkillState
 
 
 def _utcnow() -> datetime:
@@ -33,6 +34,8 @@ class SupabaseLearningStateStore:
     MASTERY = "mls_concept_mastery"
     ERRORS = "mls_learner_errors"
     BLUEPRINTS = "mls_hoc90_blueprints"
+    SKILL_NODES = "mls_skill_nodes"
+    SKILL_STATE = "mls_skill_state"
 
     def __init__(self, client: Any):
         self.client = client
@@ -260,6 +263,66 @@ class SupabaseLearningStateStore:
             errors.append(LearnerError.model_validate(row))
         return errors
 
+
+    def upsert_skill_node(self, node: SkillNode) -> SkillNode:
+        row = {
+            "skill_node_id": node.skill_node_id,
+            "vi_name": node.vi_name,
+            "english_alias": node.english_alias,
+            "domain": node.domain,
+            "parent_ids": node.parent_ids,
+            "required_prerequisites": node.required_prerequisites,
+            "supporting_prerequisites": node.supporting_prerequisites,
+            "unlock_rule": node.unlock_rule,
+            "updated_at": _iso(node.updated_at),
+        }
+        (
+            self.client.table(self.SKILL_NODES)
+            .upsert(row, on_conflict="skill_node_id")
+            .execute()
+        )
+        return node
+
+    def get_skill_node(self, skill_node_id: str) -> SkillNode | None:
+        response = (
+            self.client.table(self.SKILL_NODES)
+            .select("*")
+            .eq("skill_node_id", skill_node_id)
+            .limit(1)
+            .execute()
+        )
+        rows = _data(response)
+        return SkillNode.model_validate(rows[0]) if rows else None
+
+    def upsert_skill_state(self, state: SkillState) -> SkillState:
+        row = {
+            "skill_node_id": state.skill_node_id,
+            "mastery_level": state.mastery_level.value,
+            "current_strength": state.current_strength,
+            "forgetting_risk": state.forgetting_risk,
+            "open_error_ids": state.open_error_ids,
+            "last_test": _iso(state.last_test),
+            "next_review": _iso(state.next_review),
+            "evidence_summary": state.evidence_summary,
+            "updated_at": _iso(state.updated_at),
+        }
+        (
+            self.client.table(self.SKILL_STATE)
+            .upsert(row, on_conflict="skill_node_id")
+            .execute()
+        )
+        return state
+
+    def get_skill_state(self, skill_node_id: str) -> SkillState | None:
+        response = (
+            self.client.table(self.SKILL_STATE)
+            .select("*")
+            .eq("skill_node_id", skill_node_id)
+            .limit(1)
+            .execute()
+        )
+        rows = _data(response)
+        return SkillState.model_validate(rows[0]) if rows else None
 
     def save_blueprint(self, blueprint: Hoc90Blueprint) -> Hoc90Blueprint:
         if blueprint.status == BlueprintStatus.ACTIVE:
