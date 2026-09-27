@@ -20,31 +20,45 @@ sys.modules[SPEC.name] = audit
 SPEC.loader.exec_module(audit)
 
 
-def test_chapter_regex_recognizes_numeric_markers_only():
-    assert audit.CHAPTER_RE.match("CHAPTER 1")
-    assert audit.CHAPTER_RE.match("  Chapter 67  ")
-    assert audit.CHAPTER_RE.match("SECTION 1") is None
-    assert audit.CHAPTER_RE.match("Chapter One") is None
+class FakePage:
+    def __init__(self, text: str):
+        self.text = text
+
+    def get_text(self, mode: str):
+        assert mode == "text"
+        return self.text
 
 
-def test_chapter_markers_keeps_only_required_chapters_1_through_67(tmp_path):
-    fitz = pytest.importorskip("fitz")
-    path = tmp_path / "markers.pdf"
-    doc = fitz.open()
-    page = doc.new_page()
-    page.insert_text(
-        (72, 72),
-        "CHAPTER 1\nnot a chapter\nCHAPTER 67\nCHAPTER 68\nSECTION 2",
+class FakeDoc:
+    def __init__(self, pages: list[str]):
+        self.pages = [FakePage(page) for page in pages]
+        self.page_count = len(self.pages)
+
+    def __getitem__(self, index: int):
+        return self.pages[index]
+
+
+def test_chapter_regex_accepts_source_header_not_prose_reference():
+    assert audit.CHAPTER_RE.match("CHAPTER 1 Introduction")
+    assert audit.CHAPTER_RE.match("  CHAPTER 67 Important Drug Interactions")
+    assert audit.CHAPTER_RE.match("Chapter 24)") is None
+    assert audit.CHAPTER_RE.match("CHAPTER 59)") is None
+    assert audit.CHAPTER_RE.match("SECTION 1 Receptors") is None
+
+
+def test_chapter_markers_deduplicate_running_headers_and_keep_1_through_67():
+    doc = FakeDoc(
+        [
+            "CHAPTER 1 Introduction 3\nbody\nCHAPTER 1 Introduction 5",
+            "Chapter 24) is a prose reference\nCHAPTER 59)",
+            "CHAPTER 67 Important Drug Interactions 1253\nCHAPTER 68 Out of scope",
+        ]
     )
-    doc.save(path)
-    doc.close()
 
-    reopened = fitz.open(path)
-    markers = audit.chapter_markers(reopened)
-    reopened.close()
+    markers = audit.chapter_markers(doc)
 
     assert [item["chapter"] for item in markers] == [1, 67]
-
+    assert [item["pdf_page"] for item in markers] == [1, 3]
 
 def test_classifier_keeps_ambiguous_bold_10pt_for_review():
     assert audit.classify_candidate("Clinical use in special populations", 10.0) == (
