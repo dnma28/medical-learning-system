@@ -1,0 +1,56 @@
+name: HOC90 source-map evidence pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      logical_source_id:
+        description: Ready logical source to compile
+        required: true
+        default: costanzo-physiology
+      source_id:
+        description: Physical source ID; required for multi-file books
+        required: false
+        default: ""
+      allow_replace_existing:
+        description: Explicitly replace existing evidence for this source
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+      MLS_SUPABASE_SECRET_KEY: ${{ secrets.MLS_SUPABASE_SECRET_KEY }}
+      MLS_GOOGLE_DRIVE_OAUTH_JSON: ${{ secrets.MLS_GOOGLE_DRIVE_OAUTH_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Validate backend secrets
+        shell: bash
+        run: |
+          test -n "$MLS_SUPABASE_URL" || { echo "MLS_SUPABASE_URL is missing"; exit 1; }
+          test -n "$MLS_SUPABASE_SECRET_KEY" || { echo "MLS_SUPABASE_SECRET_KEY is missing"; exit 1; }
+          test -n "$MLS_GOOGLE_DRIVE_OAUTH_JSON" || { echo "MLS_GOOGLE_DRIVE_OAUTH_JSON is missing"; exit 1; }
+      - name: Install source compiler
+        run: pip install -e '.[supabase,google-drive,pdf-native]'
+      - name: Compile exact promoted-source evidence
+        shell: bash
+        env:
+          LOGICAL_SOURCE_ID: ${{ inputs.logical_source_id }}
+          SOURCE_ID: ${{ inputs.source_id }}
+          ALLOW_REPLACE: ${{ inputs.allow_replace_existing }}
+        run: |
+          args=(--logical-source-id "$LOGICAL_SOURCE_ID")
+          if [ -n "$SOURCE_ID" ]; then args+=(--source-id "$SOURCE_ID"); fi
+          if [ "$ALLOW_REPLACE" = "true" ]; then args+=(--allow-replace-existing); fi
+          mls-compile-source-map-evidence "${args[@]}"
