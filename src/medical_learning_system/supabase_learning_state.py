@@ -6,6 +6,7 @@ from typing import Any
 from .hoc90.blueprint import BlueprintStatus, Hoc90Blueprint
 from .hoc90.session import Hoc90Session, LearningEvent, SessionStatus, SourceSpineRef
 from .student.models import ConceptMastery, LearnerError
+from .student.spaced_retrieval import FsrsSpacedRetrievalScheduler
 
 
 def _utcnow() -> datetime:
@@ -135,6 +136,7 @@ class SupabaseLearningStateStore:
                 mastery.last_independent_retrieval
             ),
             "next_review": _iso(mastery.next_review),
+            "spaced_repetition_state": mastery.spaced_repetition_state,
             "mechanism_explained_independently": (
                 mastery.mechanism_explained_independently
             ),
@@ -169,6 +171,52 @@ class SupabaseLearningStateStore:
         row = dict(rows[0])
         row["state"] = row.pop("coarse_state")
         return ConceptMastery.model_validate(row)
+
+    def apply_spaced_retrieval_event(
+        self,
+        event: LearningEvent,
+        *,
+        scheduler: FsrsSpacedRetrievalScheduler | None = None,
+    ) -> ConceptMastery:
+        """Project one persisted retrieval event into delayed-review timing.
+
+        The append-only event remains the evidence source. This projection is
+        replay-safe and does not promote or demote M0-M7.
+        """
+        if event.concept_id is None:
+            raise ValueError("Retrieval events require concept_id.")
+
+        current = self.get_mastery(event.concept_id) or ConceptMastery(
+            concept_id=event.concept_id
+        )
+        engine = scheduler or FsrsSpacedRetrievalScheduler()
+        updated = engine.apply(mastery=current, event=event)
+        return self.upsert_mastery(updated)
+
+    def list_due_retrieval_concept_ids(
+        self,
+        *,
+        as_of: datetime | None = None,
+        limit: int = 20,
+    ) -> list[str]:
+        """Return concept IDs whose delayed retrieval is due, oldest first."""
+        if limit < 1:
+            raise ValueError("limit must be positive")
+
+        cutoff = as_of or _utcnow()
+        response = (
+            self.client.table(self.MASTERY)
+            .select("concept_id,next_review")
+            .lte("next_review", _iso(cutoff))
+            .order("next_review")
+            .limit(limit)
+            .execute()
+        )
+        return [
+            str(row["concept_id"])
+            for row in _data(response)
+            if row.get("concept_id") is not None
+        ]
 
     def upsert_error(self, error: LearnerError) -> LearnerError:
         row = {

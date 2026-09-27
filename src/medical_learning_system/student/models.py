@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +72,7 @@ class ConceptMastery(BaseModel):
     last_exposure: datetime | None = None
     last_independent_retrieval: datetime | None = None
     next_review: datetime | None = None
+    spaced_repetition_state: dict[str, Any] = Field(default_factory=dict)
 
     mechanism_explained_independently: bool = False
     feynman_pass: bool = False

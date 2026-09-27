@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
+from typing import Protocol
 
 from pydantic import BaseModel, Field
 
@@ -74,6 +76,15 @@ class RoutingDecision(BaseModel):
     requires_user_approval: bool = False
 
 
+class DueRetrievalProvider(Protocol):
+    def list_due_retrieval_concept_ids(
+        self,
+        *,
+        as_of: datetime | None = None,
+        limit: int = 20,
+    ) -> list[str]: ...
+
+
 class LearningRouter:
     """Deterministic source-aware HỌC90 routing rules.
 
@@ -90,6 +101,28 @@ class LearningRouter:
         if request.needs_source_lookup:
             return LearningRoute.SOURCE_RETRIEVAL
         return LearningRoute.CONCEPT_EXPLANATION
+
+    def route_next_from_state(
+        self,
+        context: RoutingContext,
+        *,
+        due_retrieval_provider: DueRetrievalProvider,
+        as_of: datetime | None = None,
+        due_limit: int = 20,
+    ) -> RoutingDecision:
+        """Hydrate due retrievals from learner state before deterministic routing."""
+        if context.session_start and not context.due_retrieval_concept_ids:
+            context = context.model_copy(
+                update={
+                    "due_retrieval_concept_ids": (
+                        due_retrieval_provider.list_due_retrieval_concept_ids(
+                            as_of=as_of,
+                            limit=due_limit,
+                        )
+                    )
+                }
+            )
+        return self.route_next(context)
 
     def route_next(self, context: RoutingContext) -> RoutingDecision:
         quality = self._quality_mode(context)

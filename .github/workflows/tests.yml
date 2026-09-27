@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install test dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -e '.[dev,fsrs]'
       - name: Run tests
         run: pytest -q
   optional-tool-smoke:

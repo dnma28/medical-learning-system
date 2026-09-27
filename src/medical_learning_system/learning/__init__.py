@@ -1,5 +1,6 @@
 from .router import (
     AdaptiveAction,
+    DueRetrievalProvider,
     LearningRequest,
     LearningRoute,
     LearningRouter,
@@ -11,6 +12,7 @@ from ..source_map import LearningValue
 
 __all__ = [
     "AdaptiveAction",
+    "DueRetrievalProvider",
     "LearningRequest",
     "LearningRoute",
     "LearningRouter",
