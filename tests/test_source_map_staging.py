@@ -1,5 +1,6 @@
 import pytest
 
+from medical_learning_system.coverage import StructureKind
 from medical_learning_system.source_map_staging import (
     LocatorKind,
     PointLocatorScope,
