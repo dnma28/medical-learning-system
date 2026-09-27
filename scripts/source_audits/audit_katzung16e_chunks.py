@@ -120,6 +120,17 @@ def nearest_target_size(size: float) -> float | None:
     return candidate if abs(candidate - size) <= SIZE_TOLERANCE else None
 
 
+def is_heading_style(font: str, flags: int, target_size: float) -> bool:
+    # The historical full-book H10 queue was explicitly a 10 pt bold class.
+    # Excluding regular/italic body fonts prevents short body lines from being
+    # mislabeled as heading-review work.
+    if "dingbat" in font.casefold():
+        return False
+    if target_size == 10.0:
+        return bool(flags & 16) or bool(BOLD_FONT_RE.search(font))
+    return True
+
+
 def iter_style_clusters(page) -> Iterable[dict]:
     """Yield adjacent same-style lines in the source body, excluding margins."""
     height = float(page.rect.height)
@@ -178,10 +189,18 @@ def iter_style_clusters(page) -> Iterable[dict]:
                     yield result
                 continue
 
+            font = str(span.get("font", ""))
+            flags = int(span.get("flags", 0))
+            if not is_heading_style(font, flags, target_size):
+                result = flush()
+                if result is not None:
+                    yield result
+                continue
+
             key = (
-                str(span.get("font", "")),
+                font,
                 target_size,
-                int(span.get("flags", 0)),
+                flags,
             )
             gap = None if last_y1 is None else bbox[1] - last_y1
             if current_key is not None and (
@@ -237,13 +256,21 @@ def margin_folio_candidates(page) -> list[int]:
             bbox = tuple(float(x) for x in line.get("bbox", (0, 0, 0, 0)))
             if not (bbox[1] <= 72.0 or bbox[3] >= height - 72.0):
                 continue
-            text = ws("".join(span.get("text", "") for span in line.get("spans", [])))
-            match = FOLIO_RE.match(text)
-            if not match:
-                continue
-            value = int(match.group(1))
-            if 1 <= value <= 1600:
-                values.append(value)
+            # Page numbers are often their own span inside a running-header line.
+            # Inspect spans individually before falling back to the whole line.
+            texts = [
+                ws(span.get("text", ""))
+                for span in line.get("spans", [])
+                if ws(span.get("text", ""))
+            ]
+            texts.append(ws("".join(span.get("text", "") for span in line.get("spans", []))))
+            for text in texts:
+                match = FOLIO_RE.match(text)
+                if not match:
+                    continue
+                value = int(match.group(1))
+                if 1 <= value <= 1600:
+                    values.append(value)
     return sorted(set(values))
 
 
