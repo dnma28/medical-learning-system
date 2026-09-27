@@ -87,6 +87,9 @@ class SessionCheckpoint(BaseModel):
     return_to_source: str | None = None
     working_mastery_delta: dict[str, Any] = Field(default_factory=dict)
     open_error_ids: list[str] = Field(default_factory=list)
+    # Backend-only pending tutor interaction. Stored inside the existing
+    # checkpoint JSONB; no database schema change is required.
+    pending_deeptutor_interaction: dict[str, Any] | None = None
     saved_at: datetime = Field(default_factory=_utcnow)
 
 
