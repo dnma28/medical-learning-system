@@ -1,0 +1,36 @@
+name: deeptutor-contract-smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - pyproject.toml
+      - src/medical_learning_system/deeptutor_adapter.py
+      - src/medical_learning_system/deeptutor_runtime.py
+      - tests/test_deeptutor_adapter.py
+      - tests/test_deeptutor_runtime.py
+      - scripts/check_deeptutor.py
+      - docs/integrations/deeptutor.md
+      - .github/workflows/deeptutor-contract-smoke.yml
+  push:
+    paths:
+      - pyproject.toml
+      - src/medical_learning_system/deeptutor_adapter.py
+      - src/medical_learning_system/deeptutor_runtime.py
+      - scripts/check_deeptutor.py
+      - .github/workflows/deeptutor-contract-smoke.yml
+
+jobs:
+  upstream-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install pinned DeepTutor integration
+        run: pip install -e '.[deeptutor]'
+      - name: Verify upstream API contract
+        run: python scripts/check_deeptutor.py
