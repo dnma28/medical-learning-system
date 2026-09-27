@@ -23,7 +23,8 @@ from medical_learning_system.learning.router import (
     QualityMode,
     RoutingContext,
 )
-from medical_learning_system.source_map import LearningValue
+from medical_learning_system.coverage import StructureKind
+from medical_learning_system.source_map import LearningValue, SourceMapNode
 from medical_learning_system.supabase_learning_state import (
     SupabaseLearningStateStore,
 )
@@ -321,3 +322,70 @@ def test_source_recovery_still_precedes_requested_integration():
         )
     )
     assert decision.action == AdaptiveAction.SOURCE_RECOVERY
+
+
+def test_source_spine_default_is_curriculum_neutral():
+    ref = SourceSpineRef(
+        logical_source_id="costanzo-physiology",
+        source_map_node_id="neutral-node",
+        source_id="costanzo-physiology--physical",
+    )
+    assert ref.learning_value is None
+
+    decision = LearningRouter().route_next(
+        RoutingContext(
+            source_spine=ref.routing_key,
+            current_learning_value=ref.learning_value,
+        )
+    )
+    assert decision.action == AdaptiveAction.CONTINUE_SOURCE_SPINE
+
+
+def test_source_spine_factory_preserves_null_source_map_learning_value():
+    node = SourceMapNode(
+        logical_source_id="costanzo-physiology",
+        node_id="costanzo-physiology:outline:0007",
+        parent_id="costanzo-physiology:outline:0006",
+        source_id="costanzo-physiology--physical",
+        kind=StructureKind.SUBSECTION,
+        title="Distribution of Water in the Body Fluid Compartments",
+        depth=3,
+        order_index=3,
+        page_start=8,
+        source_anchor={
+            "scope": "heading_point_not_section_range",
+            "pdf_page": 8,
+        },
+        learning_value=None,
+    )
+
+    ref = SourceSpineRef.from_source_map_node(node)
+
+    assert ref.logical_source_id == node.logical_source_id
+    assert ref.source_map_node_id == node.node_id
+    assert ref.source_id == node.source_id
+    assert ref.source_anchor == node.source_anchor
+    assert ref.learning_value is None
+    assert ref.freshness_required is False
+
+
+def test_source_spine_factory_preserves_explicit_current_clinical_value():
+    node = SourceMapNode(
+        logical_source_id="katzung-basic-clinical-pharmacology",
+        node_id="dose-node",
+        parent_id="chapter",
+        source_id="katzung-physical",
+        kind=StructureKind.SECTION,
+        title="Current dose",
+        depth=2,
+        order_index=2,
+        page_start=10,
+        source_anchor={"page_start": 10},
+        learning_value=LearningValue.CURRENT_CLINICAL_CHECK,
+        freshness_required=True,
+    )
+
+    ref = SourceSpineRef.from_source_map_node(node)
+
+    assert ref.learning_value == LearningValue.CURRENT_CLINICAL_CHECK
+    assert ref.freshness_required is True
