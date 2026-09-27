@@ -1,257 +1,247 @@
-from datetime import datetime, timezone
-from pathlib import Path
-
-import pytest
-
-import medical_learning_system.source_map_evidence as sme
 from medical_learning_system.coverage import StructureKind
-from medical_learning_system.evidence_alignment import (
-    AlignmentMethod,
-    EvidenceStructureLink,
-    align_evidence_to_structure,
-)
 from medical_learning_system.evidence_store import (
     EvidenceContentType,
     make_evidence_block,
 )
 from medical_learning_system.source_map import SourceMapNode
-from medical_learning_system.source_registry import SourceKind, SourceRecord
 from medical_learning_system.source_map_evidence import (
-    SupabaseSourceMapEvidenceCompiler,
-    _alignment_structure,
+    SourceMapEvidenceMethod,
+    SourceMapEvidenceStatus,
+    SupabaseSourceMapEvidenceStore,
+    align_evidence_to_source_map,
 )
 
 
-SOURCE_ID = "costanzo-physiology--physical"
-LOGICAL_ID = "costanzo-physiology"
-
-
-def source_record(content_sha256: str) -> SourceRecord:
-    return SourceRecord(
-        source_id=SOURCE_ID,
-        logical_source_id=LOGICAL_ID,
-        provider="google_drive",
-        provider_file_id="drive-costanzo",
-        title="Costanzo Physiology.pdf",
-        mime_type="application/pdf",
-        size_bytes=9,
-        modified_time=datetime(2026, 9, 27, tzinfo=timezone.utc),
-        kind=SourceKind.TEXTBOOK,
-        content_sha256=content_sha256,
+def node(
+    node_id,
+    title,
+    *,
+    parent_id,
+    depth,
+    order_index,
+    page_start=None,
+    page_end=None,
+    source_id="physical-1",
+    kind=StructureKind.SUBSECTION,
+):
+    return SourceMapNode(
+        logical_source_id="book-1",
+        node_id=node_id,
+        parent_id=parent_id,
+        kind=kind,
+        title=title,
+        depth=depth,
+        order_index=order_index,
+        source_id=source_id,
+        page_start=page_start,
+        page_end=page_end,
+        source_anchor=(
+            {"scope": "heading_point_not_section_range", "pdf_page": page_start}
+            if page_start is not None
+            else {}
+        ),
     )
 
 
-def map_nodes(title: str = "1 Cellular Physiology") -> list[SourceMapNode]:
+def block(index, page_index, text, *, bbox=(10.0, 20.0, 100.0, 40.0)):
+    return make_evidence_block(
+        source_id="physical-1",
+        block_index=index,
+        page_index=page_index,
+        content_type=EvidenceContentType.TEXT,
+        parser="pymupdf-native",
+        parser_version="1",
+        text=text,
+        bbox=bbox,
+    )
+
+
+def source_map():
     return [
         SourceMapNode(
-            logical_source_id=LOGICAL_ID,
+            logical_source_id="book-1",
             node_id="book",
+            parent_id=None,
             kind=StructureKind.BOOK,
-            title="Costanzo Physiology",
+            title="Book",
             depth=0,
             order_index=0,
         ),
-        SourceMapNode(
-            logical_source_id=LOGICAL_ID,
-            node_id="chapter-1",
+        node(
+            "chapter",
+            "1 Cellular Physiology",
             parent_id="book",
-            source_id=SOURCE_ID,
-            kind=StructureKind.CHAPTER,
-            title=title,
             depth=1,
             order_index=1,
-            page_start=8,
-            source_anchor={
-                "pdf_page": 8,
-                "scope": "heading_point_not_section_range",
-            },
+            page_start=1,
+            kind=StructureKind.CHAPTER,
+        ),
+        node(
+            "section",
+            "Resting Membrane Potential",
+            parent_id="chapter",
+            depth=2,
+            order_index=2,
+            page_start=2,
+            kind=StructureKind.SECTION,
         ),
     ]
 
 
-def test_alignment_uses_promoted_heading_point_without_inferred_page_end():
-    structure = _alignment_structure(map_nodes(), source_id=SOURCE_ID)
-    assert structure[1].page_start == 8
-    assert structure[1].page_end is None
+def test_exact_headings_and_sequence_create_promoted_links():
+    evidence = [
+        block(0, 0, "CHAPTER 1 Cellular Physiology"),
+        block(1, 0, "chapter introduction"),
+        block(2, 1, "RESTING MEMBRANE POTENTIAL"),
+        block(3, 1, "resting membrane paragraph"),
+    ]
 
-    heading = make_evidence_block(
-        source_id=SOURCE_ID,
-        block_index=0,
-        page_index=7,
-        content_type=EvidenceContentType.TEXT,
-        parser="test",
-        text="1 Cellular Physiology",
-        bbox=(10.0, 10.0, 200.0, 30.0),
-    )
-    body = make_evidence_block(
-        source_id=SOURCE_ID,
-        block_index=1,
-        page_index=7,
-        content_type=EvidenceContentType.TEXT,
-        parser="test",
-        text="Body fluid physiology begins here.",
-        bbox=(10.0, 40.0, 200.0, 80.0),
+    result = align_evidence_to_source_map(
+        logical_source_id="book-1",
+        staging_version=3,
+        nodes=source_map(),
+        evidence=evidence,
     )
 
-    links = align_evidence_to_structure(structure, [heading, body])
-
-    chapter_links = [link for link in links if link.node_id == "chapter-1"]
-    assert any(
-        link.method == AlignmentMethod.EXACT_HEADING
-        for link in chapter_links
+    assert set(result.resolved_node_ids) == {"chapter", "section"}
+    assert result.unresolved_node_ids == []
+    section_links = [link for link in result.links if link.node_id == "section"]
+    assert section_links
+    assert all(link.status == SourceMapEvidenceStatus.PROMOTED for link in section_links)
+    assert {link.method for link in section_links} == {
+        SourceMapEvidenceMethod.EXACT_HEADING,
+        SourceMapEvidenceMethod.HEADING_SEQUENCE,
+    }
+    paragraph = next(
+        link
+        for link in section_links
+        if link.evidence_id == evidence[3].evidence_id
     )
-    assert any(
-        link.evidence_id == body.evidence_id
-        and link.method == AlignmentMethod.HEADING_SEQUENCE
-        for link in chapter_links
+    assert paragraph.anchor_context["pdf_page"] == 2
+    assert paragraph.anchor_context["content_sha256"] == evidence[3].content_sha256
+
+
+def test_unresolved_heading_is_a_barrier_not_silent_parent_leakage():
+    evidence = [
+        block(0, 0, "CHAPTER 1 Cellular Physiology"),
+        block(1, 0, "chapter introduction"),
+        block(2, 1, "a paragraph where a section heading should have been found"),
+    ]
+
+    result = align_evidence_to_source_map(
+        logical_source_id="book-1",
+        staging_version=3,
+        nodes=source_map(),
+        evidence=evidence,
+    )
+
+    assert result.resolved_node_ids == ["chapter"]
+    assert result.unresolved_node_ids == ["section"]
+    paragraph_links = [
+        link for link in result.links if link.evidence_id == evidence[2].evidence_id
+    ]
+    assert paragraph_links == []
+
+
+def test_verified_range_can_link_without_inventing_page_end():
+    nodes = source_map()
+    nodes[2] = nodes[2].model_copy(
+        update={
+            "page_start": 2,
+            "page_end": 3,
+            "source_anchor": {"scope": "verified_section_range", "pdf_page": 2},
+        }
+    )
+    evidence = [
+        block(0, 0, "CHAPTER 1 Cellular Physiology"),
+        block(1, 1, "body text without a captured section heading"),
+    ]
+
+    result = align_evidence_to_source_map(
+        logical_source_id="book-1",
+        staging_version=3,
+        nodes=nodes,
+        evidence=evidence,
+    )
+
+    range_link = next(
+        link
+        for link in result.links
+        if link.evidence_id == evidence[1].evidence_id
+        and link.node_id == "section"
+    )
+    assert range_link.method == SourceMapEvidenceMethod.VERIFIED_PAGE_RANGE
+    assert range_link.confidence == 1.0
+    assert "section" in result.unresolved_node_ids
+
+
+def test_other_physical_source_nodes_are_not_alignment_targets():
+    nodes = source_map()
+    nodes.append(
+        node(
+            "other-source-section",
+            "Foreign section",
+            parent_id="chapter",
+            depth=2,
+            order_index=3,
+            page_start=2,
+            source_id="physical-2",
+            kind=StructureKind.SECTION,
+        )
+    )
+    result = align_evidence_to_source_map(
+        logical_source_id="book-1",
+        staging_version=3,
+        nodes=nodes,
+        evidence=[block(0, 0, "CHAPTER 1 Cellular Physiology")],
+    )
+    assert not any(
+        link.node_id == "other-source-section" for link in result.links
     )
 
 
-def test_unmatched_heading_does_not_invent_page_range_candidate():
-    structure = _alignment_structure(
-        map_nodes(title="Heading not present"),
-        source_id=SOURCE_ID,
-    )
-    body = make_evidence_block(
-        source_id=SOURCE_ID,
-        block_index=0,
-        page_index=7,
-        content_type=EvidenceContentType.TEXT,
-        parser="test",
-        text="Unrelated page text.",
-    )
-
-    links = align_evidence_to_structure(structure, [body])
-
-    assert not any(link.node_id == "chapter-1" for link in links)
+class Response:
+    def __init__(self, data):
+        self.data = data
 
 
-class FakeMedical:
-    def __init__(self, source):
-        self.source = source
-        self.replaced = None
+class Rpc:
+    def __init__(self, payload):
+        self.payload = payload
 
-    def get_source(self, source_id):
-        return self.source if source_id == self.source.source_id else None
-
-    def replace_evidence(self, source_id, blocks):
-        self.replaced = (source_id, blocks)
+    def execute(self):
+        return Response(len(self.payload["p_links"]))
 
 
-class FakeLinks:
+class Client:
     def __init__(self):
-        self.replaced = None
+        self.calls = []
 
-    def replace_source(self, **kwargs):
-        self.replaced = kwargs
-
-
-class CompilerUnderTest(SupabaseSourceMapEvidenceCompiler):
-    def __init__(self, source, nodes, *, existing=0):
-        self.client = object()
-        self.medical = FakeMedical(source)
-        self.links = FakeLinks()
-        self._nodes = nodes
-        self._existing = existing
-
-    def _readiness(self, logical_source_id):
-        return {"ready_for_hoc90": True, "current_version": 2}
-
-    def _source_map_nodes(self, logical_source_id):
-        return self._nodes
-
-    def _existing_evidence_count(self, source_id):
-        return self._existing
+    def rpc(self, name, payload):
+        self.calls.append((name, payload))
+        return Rpc(payload)
 
 
-def test_compiler_fails_before_writes_on_fingerprint_mismatch(tmp_path):
-    path = tmp_path / "source.pdf"
-    path.write_bytes(b"wrong bytes")
-    compiler = CompilerUnderTest(
-        source_record("0" * 64),
-        map_nodes(),
+def test_store_uses_atomic_replace_rpc_and_preserves_version_identity():
+    client = Client()
+    store = SupabaseSourceMapEvidenceStore(client)
+    evidence = [block(0, 0, "CHAPTER 1 Cellular Physiology")]
+    alignment = align_evidence_to_source_map(
+        logical_source_id="book-1",
+        staging_version=3,
+        nodes=source_map(),
+        evidence=evidence,
     )
 
-    with pytest.raises(RuntimeError, match="fingerprint"):
-        compiler.compile_path(
-            logical_source_id=LOGICAL_ID,
-            source_id=SOURCE_ID,
-            path=path,
-        )
-
-    assert compiler.medical.replaced is None
-    assert compiler.links.replaced is None
-
-
-def test_compiler_requires_explicit_replacement_authorization(tmp_path, monkeypatch):
-    path = tmp_path / "source.pdf"
-    path.write_bytes(b"canonical")
-    compiler = CompilerUnderTest(
-        source_record("a" * 64),
-        map_nodes(),
-        existing=1,
-    )
-    monkeypatch.setattr(sme, "sha256_file", lambda _: "a" * 64)
-
-    with pytest.raises(RuntimeError, match="replacement authorization"):
-        compiler.compile_path(
-            logical_source_id=LOGICAL_ID,
-            source_id=SOURCE_ID,
-            path=path,
-        )
-
-    assert compiler.medical.replaced is None
-
-
-def test_compiler_persists_evidence_and_promoted_map_links(tmp_path, monkeypatch):
-    path = tmp_path / "source.pdf"
-    path.write_bytes(b"canonical")
-    compiler = CompilerUnderTest(
-        source_record("a" * 64),
-        map_nodes(),
-    )
-    block = make_evidence_block(
-        source_id=SOURCE_ID,
-        block_index=0,
-        page_index=7,
-        content_type=EvidenceContentType.TEXT,
-        parser="test",
-        text="1 Cellular Physiology",
-    )
-    link = EvidenceStructureLink(
-        evidence_id=block.evidence_id,
-        source_id=SOURCE_ID,
-        node_id="chapter-1",
-        method=AlignmentMethod.EXACT_HEADING,
-        confidence=1.0,
+    count = store.replace_source(
+        logical_source_id="book-1",
+        staging_version=3,
+        source_id="physical-1",
+        links=alignment.links,
     )
 
-    monkeypatch.setattr(sme, "sha256_file", lambda _: "a" * 64)
-    monkeypatch.setattr(
-        sme,
-        "parsed_document_from_native_pdf",
-        lambda _: object(),
-    )
-    monkeypatch.setattr(
-        sme,
-        "materialize_evidence_only",
-        lambda **_: [block],
-    )
-    monkeypatch.setattr(
-        sme,
-        "align_evidence_to_structure",
-        lambda _nodes, _blocks: [link],
-    )
-
-    result = compiler.compile_path(
-        logical_source_id=LOGICAL_ID,
-        source_id=SOURCE_ID,
-        path=path,
-    )
-
-    assert compiler.medical.replaced == (SOURCE_ID, [block])
-    assert compiler.links.replaced["logical_source_id"] == LOGICAL_ID
-    assert compiler.links.replaced["source_map_version"] == 2
-    assert compiler.links.replaced["links"] == [link]
-    assert result.linked_node_ids == ["chapter-1"]
-    assert result.unlinked_node_ids == []
+    assert count == len(alignment.links)
+    name, payload = client.calls[0]
+    assert name == "mls_replace_source_map_evidence_links"
+    assert payload["p_staging_version"] == 3
+    assert payload["p_source_id"] == "physical-1"
