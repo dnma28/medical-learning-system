@@ -57,7 +57,7 @@ class ClinicalReasoningTask(BaseModel):
     skill_node_id: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
     concept_ids: list[str] = Field(default_factory=list)
-    source_routing_keys: list[str] = Field(default_factory=list)
+    source_routing_keys: list[str] = Field(min_length=1)
     current_validity_required: bool = False
     current_validity_verified: bool = False
 
