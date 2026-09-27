@@ -24,13 +24,14 @@ def _data(response: Any) -> list[dict[str, Any]]:
 
 
 class SupabaseHoc90SourceContextResolver:
-    """Resolve exact evidence linked to one Source Map node.
+    """Resolve exact evidence linked to one promoted Source Map node.
 
-    This deliberately fails closed. It does not perform semantic search, page-range
-    guessing, or cross-source substitution when the exact node has no linked evidence.
+    Resolution is deliberately narrow. It never semantic-searches another node,
+    guesses a page range, or substitutes another physical source.
     """
 
-    LINKS = "mls_evidence_structure_links"
+    SOURCE_MAP_LINKS = "mls_source_map_evidence_links"
+    LEGACY_LINKS = "mls_evidence_structure_links"
     EVIDENCE = "mls_evidence_blocks"
 
     def __init__(self, client: Any, *, max_chars: int = 60_000):
@@ -42,22 +43,35 @@ class SupabaseHoc90SourceContextResolver:
     def resolve(self, source_ref: SourceSpineRef) -> ResolvedSourceContext:
         source_id = source_ref.source_id
         node_id = source_ref.source_map_node_id
+        logical_source_id = source_ref.logical_source_id
         if not source_id or not node_id:
             raise SourceContextUnavailable(
                 "Source context requires both source_id and source_map_node_id."
             )
 
+        # Preferred contract: exact promoted Source Map identity.
         link_rows = _data(
-            self.client.table(self.LINKS)
+            self.client.table(self.SOURCE_MAP_LINKS)
             .select("evidence_id,confidence")
+            .eq("logical_source_id", logical_source_id)
             .eq("source_id", source_id)
             .eq("node_id", node_id)
             .order("confidence", desc=True)
             .execute()
         )
-        evidence_ids = list(
-            dict.fromkeys(str(row["evidence_id"]) for row in link_rows if row.get("evidence_id"))
-        )
+        evidence_ids = _unique_evidence_ids(link_rows)
+
+        # Backward compatibility only. This does not widen the source boundary.
+        if not evidence_ids:
+            legacy_rows = _data(
+                self.client.table(self.LEGACY_LINKS)
+                .select("evidence_id,confidence")
+                .eq("source_id", source_id)
+                .eq("node_id", node_id)
+                .order("confidence", desc=True)
+                .execute()
+            )
+            evidence_ids = _unique_evidence_ids(legacy_rows)
 
         rows: list[dict[str, Any]]
         if evidence_ids:
@@ -71,9 +85,8 @@ class SupabaseHoc90SourceContextResolver:
                 .execute()
             )
         else:
-            # Backward-compatible exact scalar alignment only. We intentionally do
-            # not fall back to page ranges or semantic search because those can
-            # silently widen the source boundary.
+            # Old rows may carry one exact scalar structure_node_id. We do not
+            # fall back to page ranges because that can silently widen context.
             rows = _data(
                 self.client.table(self.EVIDENCE)
                 .select("evidence_id,page_index,block_index,content_type,text")
@@ -88,8 +101,10 @@ class SupabaseHoc90SourceContextResolver:
             ]
 
         text_rows = [
-            row for row in rows
-            if row.get("content_type") == "text" and str(row.get("text") or "").strip()
+            row
+            for row in rows
+            if row.get("content_type") == "text"
+            and str(row.get("text") or "").strip()
         ]
         if not text_rows:
             raise SourceContextUnavailable(
@@ -116,3 +131,11 @@ class SupabaseHoc90SourceContextResolver:
             page_start=min(pages) if pages else None,
             page_end=max(pages) if pages else None,
         )
+
+
+def _unique_evidence_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(row["evidence_id"]) for row in rows if row.get("evidence_id")
+        )
+    )
