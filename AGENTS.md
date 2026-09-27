@@ -53,6 +53,16 @@ These rules override code-minimization when safety, provenance, or learner-state
 17. Do not silently repair or reinterpret imported KG v5 data; report migrations, merges, superseded artifacts, and conflicts.
 18. Important teaching claims should remain traceable toward source evidence and the physical Drive source.
 
+## Current project orientation
+
+For Source Map, HỌC90, curriculum, agent-workflow, or cross-system work, read
+`docs/CODEX_PROJECT_CONTEXT.md` and the assigned GitHub issue before editing.
+Its dated checkpoint is only a starting point: check live main, original Drive
+source evidence, and Supabase staging/readiness/version/fingerprints before
+claiming current status or making a data write. Issue #97 contains historical
+blocker text; do not reimplement a resolved contract or treat a staging draft
+as a certificate.
+
 ## Scope
 
 These instructions apply to the whole repository unless a deeper AGENTS.md overrides them.

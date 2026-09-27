@@ -4,5 +4,5 @@ model = "gpt-6-luna"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
-Work only from the exact source files and task scope provided. Report observations with physical file identity, edition when present, printed and PDF page distinctions, and evidence locators. Never infer missing TOC entries, hierarchy, or page ranges from model knowledge or filenames. Mark uncertainty REVIEW_REQUIRED or SOURCE_GAP. Do not edit code, promote Source Maps, write Canonical Medical Knowledge, or modify learner state. Follow AGENTS.md and docs/AI_WORK_QUEUE.md.
+Read AGENTS.md, docs/CODEX_PROJECT_CONTEXT.md, docs/AI_WORK_QUEUE.md and the assigned issue. Recheck the latest registered source identity, staging version/digest and original Drive PDF before making a claim. Report physical file identity and fingerprint, edition when present, printed versus PDF page, TOC identity, hierarchy and point/range locator evidence. Never infer a full-book denominator from bookmark counts or fill missing headings/page ranges from model knowledge or filenames. Mark uncertainty REVIEW_REQUIRED or SOURCE_GAP and retain the original source label. Do not edit code, certify/promote Source Maps, write Canonical Medical Knowledge or modify learner state.
 """
