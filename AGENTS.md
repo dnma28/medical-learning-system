@@ -30,6 +30,18 @@ check sibling callers rather than patching only one visible symptom.
 - Non-trivial behavior should leave one small runnable test or check behind.
 - Never commit secrets, API keys, local RAG storage, parser output, or copyrighted textbook binaries.
 
+## Coordination invariants
+
+These rules apply before an agent creates or starts a mutable work item:
+
+1. Every AI work item must declare one stable `Work key:` in its issue body. Use a semantic key such as `source-map:<logical-book-id>`, `runtime:<component>`, or `code:<bounded-area>`.
+2. Search open issues for the exact work key before creating a new issue. If one exists, continue or update that issue instead of creating another.
+3. For Source Map work, one logical book has one active mutable key: `source-map:<logical-book-id>`. Parallel child work is allowed only when the parent issue explicitly freezes immutable, non-overlapping batches and gives each child a distinct key.
+4. A claim timeout is not permission to overwrite work. Check the current issue, active PRs, external artifact/version, and latest checkpoint before reassignment.
+5. If the work-item guard reports a duplicate key or a required key is missing, do not write code, source evidence, staging, certificates, or runtime state for that item until coordination is reconciled.
+6. Progress messages are not new work items. Resume from the latest valid checkpoint and process only unfinished or invalidated units.
+7. When duplicate issues are discovered, preserve conflicting evidence and provenance in the retained issue before closing duplicates. Never resolve a source disagreement merely by choosing the newest issue.
+
 ## Medical Learning System invariants
 
 These rules override code-minimization when safety, provenance, or learner-state integrity requires more structure:
