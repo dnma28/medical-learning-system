@@ -16,7 +16,7 @@ on:
       logical_source_id:
         description: Logical source to inspect
         required: false
-        default: guyton-hall-physiology
+        default: costanzo-physiology
 
 permissions:
   contents: read
@@ -68,6 +68,6 @@ jobs:
       - name: Check live HOC90 runtime readiness
         shell: bash
         env:
-          LOGICAL_SOURCE_ID: ${{ inputs.logical_source_id || 'guyton-hall-physiology' }}
+          LOGICAL_SOURCE_ID: ${{ inputs.logical_source_id || 'costanzo-physiology' }}
         run: |
           mls-hoc90-deeptutor readiness --logical-source-id "$LOGICAL_SOURCE_ID"
