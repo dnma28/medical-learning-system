@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-import fitz
+try:
+    import fitz
+except ModuleNotFoundError:  # Unit CI can test pure classification without PDF tooling.
+    fitz = None
 
 LOGICAL_SOURCE_ID = "katzung-basic-clinical-pharmacology"
 
@@ -84,6 +87,14 @@ class SourceSpec:
     @property
     def filename(self) -> str:
         return f"Katzung_{self.part_index}.pdf"
+
+
+def require_fitz() -> None:
+    if fitz is None:
+        raise RuntimeError(
+            "PyMuPDF is required for the Katzung source audit; "
+            "install the pdf-native optional dependency."
+        )
 
 
 def ws(text: str) -> str:
@@ -358,6 +369,7 @@ def reconstruct_candidate_parents(observations: list[dict]) -> None:
 
 
 def audit_part(spec: SourceSpec, path: Path) -> tuple[dict, list[dict]]:
+    require_fitz()
     if path.stat().st_size != spec.size_bytes:
         raise AssertionError(
             f"part {spec.part_index} size mismatch: {path.stat().st_size}"
@@ -457,6 +469,7 @@ def seam_audit(part_summaries: list[dict]) -> list[dict]:
 
 
 def main(directory: str) -> None:
+    require_fitz()
     root = Path(directory)
     specs = [SourceSpec(*row) for row in SOURCE_MANIFEST]
 
