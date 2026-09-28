@@ -306,6 +306,73 @@ grant execute on function public.mls_stage_source_map(
 -- Force application writers through the version-guarded staging RPC.
 revoke insert on public.mls_source_map_staging from service_role;
 
+-- Certification is a full-book gate and must not certify a logical identity
+-- that the registry still marks as unresolved.
+create or replace function public.mls_certify_source_map(
+    p_logical_source_id text,
+    p_staging_version bigint,
+    p_expected_staging_sha256 text
+) returns text
+language plpgsql
+set search_path = ''
+as $
+declare
+    s public.mls_source_map_staging%rowtype;
+    v_identity_status text;
+    v_sha text;
+    v_certificate text;
+begin
+    select identity_status into v_identity_status
+    from public.mls_logical_sources
+    where logical_source_id = p_logical_source_id;
+    if not found then raise exception 'logical source not found'; end if;
+    if v_identity_status <> 'verified' then
+        raise exception 'logical source identity is not verified';
+    end if;
+
+    if p_staging_version is distinct from (
+        select max(staging_version)
+        from public.mls_source_map_staging
+        where logical_source_id = p_logical_source_id
+    ) then
+        raise exception 'stale staging version';
+    end if;
+
+    v_sha := public.mls_validate_source_map_stage(
+        p_logical_source_id, p_staging_version
+    );
+    if v_sha <> p_expected_staging_sha256 then
+        raise exception 'stale staging digest';
+    end if;
+
+    select * into s
+    from public.mls_source_map_staging
+    where logical_source_id = p_logical_source_id
+      and staging_version = p_staging_version;
+
+    v_certificate := pg_catalog.encode(
+        pg_catalog.sha256(
+            pg_catalog.convert_to(
+                p_logical_source_id || ':' || p_staging_version::text || ':'
+                || v_sha || ':' || s.audit_metadata::text,
+                'UTF8'
+            )
+        ),
+        'hex'
+    );
+
+    insert into public.mls_source_map_certificates(
+        logical_source_id, staging_version, staging_sha256,
+        certificate_sha256, toc_denominator, audit_metadata
+    ) values (
+        p_logical_source_id, p_staging_version, v_sha,
+        v_certificate, s.toc_denominator, s.audit_metadata
+    );
+
+    return v_certificate;
+end;
+$;
+
 -- Runtime parity must cover every field that promotion materializes.
 create or replace function public.mls_runtime_matches_staging(
     p_logical_source_id text, p_staging_version bigint
