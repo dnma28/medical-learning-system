@@ -224,7 +224,7 @@ begin
     where session_id = p_session_id
     for update;
 
-    if not found then raise exception 'HOK90 session not found'; end if;
+    if not found then raise exception 'HOC90 session not found'; end if;
     if v_session.status <> 'paused' then
         raise exception 'DeepTutor submission requires a paused session';
     end if;
@@ -296,7 +296,7 @@ begin
        or pg_catalog.jsonb_typeof(p_source_spine) <> 'array'
        or pg_catalog.jsonb_typeof(p_payload) <> 'object'
     then
-        raise exception 'invalid HOK90 blueprint payload';
+        raise exception 'invalid HOC90 blueprint payload';
     end if;
 
     if p_status = 'active' then
