@@ -71,6 +71,54 @@ class SupabaseLearningStateStore:
         )
         return session
 
+    def commit_deeptutor_submission(
+        self,
+        *,
+        event: LearningEvent,
+        resumed_session: Hoc90Session,
+        interaction_id: str,
+    ) -> LearningEvent:
+        checkpoint = (
+            resumed_session.checkpoint.model_dump(mode="json")
+            if resumed_session.checkpoint is not None
+            else None
+        )
+        event_row = {
+            "event_id": event.event_id,
+            "session_id": event.session_id,
+            "event_type": event.event_type.value,
+            "concept_id": event.concept_id,
+            "question_id": event.question_id,
+            "outcome": event.outcome,
+            "answer_summary": event.answer_summary,
+            "hint_level": event.hint_level,
+            "metadata": {
+                **event.metadata,
+                **(
+                    {"source_ref": event.source_ref.model_dump(mode="json")}
+                    if event.source_ref is not None
+                    else {}
+                ),
+            },
+            "created_at": _iso(event.created_at),
+        }
+        response = self.client.rpc(
+            "mls_commit_deeptutor_submission",
+            {
+                "p_session_id": event.session_id,
+                "p_interaction_id": interaction_id,
+                "p_event": event_row,
+                "p_resumed_checkpoint": checkpoint,
+                "p_updated_at": _iso(resumed_session.updated_at),
+            },
+        ).execute()
+        result = getattr(response, "data", None)
+        if not isinstance(result, dict) or not result.get("event_id"):
+            raise RuntimeError("DeepTutor submission RPC readback missing")
+        if str(result["event_id"]) != event.event_id:
+            raise RuntimeError("DeepTutor idempotency returned a different event_id")
+        return event
+
     def load_resumable_session(self) -> Hoc90Session | None:
         active = self._latest_session(SessionStatus.ACTIVE)
         if active is not None:
@@ -125,8 +173,16 @@ class SupabaseLearningStateStore:
         self.client.table(self.EVENTS).insert(row).execute()
         return event
 
-    def upsert_mastery(self, mastery: ConceptMastery) -> ConceptMastery:
+    def upsert_mastery(
+        self,
+        mastery: ConceptMastery,
+        *,
+        evidence_event_id: str,
+    ) -> ConceptMastery:
+        if not evidence_event_id:
+            raise ValueError("mastery projection requires evidence_event_id")
         row = {
+            "last_learning_event_id": evidence_event_id,
             "concept_id": mastery.concept_id,
             "coarse_state": mastery.state.value,
             "mastery_level": mastery.mastery_level.value,
@@ -194,7 +250,7 @@ class SupabaseLearningStateStore:
         )
         engine = scheduler or FsrsSpacedRetrievalScheduler()
         updated = engine.apply(mastery=current, event=event)
-        return self.upsert_mastery(updated)
+        return self.upsert_mastery(updated, evidence_event_id=event.event_id)
 
     def list_due_retrieval_concept_ids(
         self,
@@ -221,8 +277,16 @@ class SupabaseLearningStateStore:
             if row.get("concept_id") is not None
         ]
 
-    def upsert_error(self, error: LearnerError) -> LearnerError:
+    def upsert_error(
+        self,
+        error: LearnerError,
+        *,
+        evidence_event_id: str,
+    ) -> LearnerError:
+        if not evidence_event_id:
+            raise ValueError("learner-error projection requires evidence_event_id")
         row = {
+            "last_learning_event_id": evidence_event_id,
             "error_id": error.id,
             "concept_id": error.concept_id,
             "observed_statement": error.statement,
@@ -294,8 +358,16 @@ class SupabaseLearningStateStore:
         rows = _data(response)
         return SkillNode.model_validate(rows[0]) if rows else None
 
-    def upsert_skill_state(self, state: SkillState) -> SkillState:
+    def upsert_skill_state(
+        self,
+        state: SkillState,
+        *,
+        evidence_event_id: str,
+    ) -> SkillState:
+        if not evidence_event_id:
+            raise ValueError("skill-state projection requires evidence_event_id")
         row = {
+            "last_learning_event_id": evidence_event_id,
             "skill_node_id": state.skill_node_id,
             "mastery_level": state.mastery_level.value,
             "current_strength": state.current_strength,
@@ -325,30 +397,23 @@ class SupabaseLearningStateStore:
         return SkillState.model_validate(rows[0]) if rows else None
 
     def save_blueprint(self, blueprint: Hoc90Blueprint) -> Hoc90Blueprint:
-        if blueprint.status == BlueprintStatus.ACTIVE:
-            (
-                self.client.table(self.BLUEPRINTS)
-                .update({"status": BlueprintStatus.SUPERSEDED.value})
-                .eq("status", BlueprintStatus.ACTIVE.value)
-                .execute()
-            )
-
-        row = {
-            "lesson_id": blueprint.lesson_id,
-            "status": blueprint.status.value,
-            "curriculum_position": blueprint.curriculum_position,
-            "source_spine": [
-                ref.model_dump(mode="json")
-                for ref in blueprint.source_spine
-            ],
-            "payload": blueprint.model_dump(mode="json"),
-            "updated_at": _iso(_utcnow()),
-        }
-        (
-            self.client.table(self.BLUEPRINTS)
-            .upsert(row, on_conflict="lesson_id")
-            .execute()
-        )
+        source_spine = [
+            ref.model_dump(mode="json")
+            for ref in blueprint.source_spine
+        ]
+        response = self.client.rpc(
+            "mls_save_hoc90_blueprint",
+            {
+                "p_lesson_id": blueprint.lesson_id,
+                "p_status": blueprint.status.value,
+                "p_curriculum_position": blueprint.curriculum_position,
+                "p_source_spine": source_spine,
+                "p_payload": blueprint.model_dump(mode="json"),
+                "p_updated_at": _iso(_utcnow()),
+            },
+        ).execute()
+        if not isinstance(getattr(response, "data", None), dict):
+            raise RuntimeError("HOC90 blueprint RPC readback missing")
         return blueprint
 
     def get_active_blueprint(self) -> Hoc90Blueprint | None:
