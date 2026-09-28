@@ -15,7 +15,18 @@ An interrupted run must never require guessing what was completed, silently reus
 
 ## Deterministic batch runner
 
-When the repository provides `mls-source-map-batch`, prefer it over chat-driven I/O for bounded review work:
+When the repository provides `mls-source-map-batch`, use it rather than chat-driven row selection for bounded review work.
+
+New bounded manifests must contain a machine-readable `scope` lock with:
+- exact `work_key`;
+- unit/chapter field;
+- authorized unit set;
+- exact per-unit counts and total;
+- exact physical PDF start/end scope for reverse coverage.
+
+The runner fails closed when the manifest population drifts from that lock. Reverse coverage uses the full authorized physical PDF interval; candidate-page windows alone are never evidence that omitted publisher headings do not exist.
+
+For bounded review work:
 
 - `prepare` verifies/materializes the source, keys the PDF block cache by content SHA-256, locks the full original manifest row, and emits a compact review packet.
 - the model writes only decision fields; locked source fields are not part of the decision schema.
@@ -23,6 +34,19 @@ When the repository provides `mls-source-map-batch`, prefer it over chat-driven 
 - with `ACCESS_GAP`/`SOURCE_GAP`, do not emit a canonical page or any VERIFIED state. Use candidate evidence only.
 
 Do not rebuild these checks ad hoc in chat when the runner can perform them deterministically.
+## Atomic work ownership
+
+After migration `source_map_workflow_stability` is deployed, mutable Source Map work requires a live Supabase lease for the exact `work_key`.
+
+1. Claim with `mls_claim_source_map_work` only after the manifest and scope hashes are frozen.
+2. Persist the returned lease token outside model prose and heartbeat long runs.
+3. Recheck the lease before artifact upload.
+4. After Drive readback, complete the key with exact artifact reference + SHA-256.
+5. Release only when abandoning an incomplete batch.
+6. A completed work key must never be rerun; create a new explicitly versioned work key only after a retained-issue correction invalidates the old result.
+
+If the atomic claim RPC is expected by current main but unavailable in live Supabase, stop with an infrastructure blocker. GitHub comments and Drive searches are discovery/audit aids, not locks.
+
 ## Mandatory bootstrap
 
 Before any source classification or artifact write:
@@ -34,7 +58,8 @@ Before any source classification or artifact write:
 5. Read live Supabase state required by the task.
 6. Verify canonical source identity and fingerprint before classifying.
 7. Recompute the input population from the frozen input artifact.
-8. Assert the scope gate before reading source evidence.
+8. Encode the scope/count/physical-boundary lock in the batch manifest and let the runner assert it.
+9. Acquire the atomic live work lease before mutable evidence work.
 
 If the scope gate fails, stop with `SCOPE_GATE_FAILED` and do not classify or upload.
 
@@ -118,11 +143,12 @@ For small bounded tasks where the requested GitHub checkpoint itself is the fina
 
 Immediately before every irreversible write:
 
+- verify the live lease token still owns the exact work key;
 - re-search exact work key;
 - re-search exact artifact name;
 - re-read latest issue comments relevant to the work key.
 
-If another worker has already completed the same work, stop. Do not produce a second canonical artifact or checkpoint.
+The atomic lease is the write exclusion mechanism. Search results are a second-line reconciliation check. If the lease is lost/expired or another worker completed the key, stop. Do not upload a second canonical artifact or checkpoint.
 
 ## Evidence rules
 
