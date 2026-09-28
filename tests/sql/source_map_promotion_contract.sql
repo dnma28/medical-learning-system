@@ -245,8 +245,13 @@ begin
              where logical_source_id=book and staging_version=8));
     exception when others then failed := true; end;
     if not failed then raise exception 'SOURCE_GAP was certified'; end if;
-    if public.mls_source_map_readiness(book)->>'audited_state' <> 'source_gap'
-    then raise exception 'required SOURCE_GAP not surfaced in readiness'; end if;
+    readiness := public.mls_source_map_readiness(book);
+    if readiness->>'ready_for_hoc90' <> 'true'
+       or readiness->>'audited_state' <> 'ready_for_hoc90'
+       or readiness->>'latest_staging_audited_state' <> 'source_gap'
+       or readiness->>'latest_staging_version' <> '8'
+       or readiness->>'readiness_staging_version' <> '1'
+    then raise exception 'newer SOURCE_GAP draft corrupted promoted readiness semantics'; end if;
 
     -- True printed heading depth can exceed the original five-kind chain.
     -- Keep every parent and a point locator without claiming page_end.
