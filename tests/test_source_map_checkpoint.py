@@ -33,3 +33,24 @@ def test_latest_checkpoint_skips_non_checkpoint_comments():
     parsed = latest_checkpoint([older, "ordinary comment", newer])
     assert parsed is not None
     assert parsed.status == "VALIDATED"
+
+
+
+def test_latest_checkpoint_filters_exact_work_key_and_batch():
+    other = SourceMapCheckpoint(
+        work_key="source-map:other-book",
+        book_id="other-book",
+        batch_id="BATCH-OTHER",
+        status="VALIDATED",
+    )
+    target = _checkpoint("ARTIFACT_VERIFIED")
+    comments = [
+        render_checkpoint_block(target),
+        render_checkpoint_block(other),
+    ]
+    assert latest_checkpoint(
+        comments,
+        work_key=target.work_key,
+        batch_id=target.batch_id,
+    ) == target
+    assert latest_checkpoint(comments, work_key="missing") is None
