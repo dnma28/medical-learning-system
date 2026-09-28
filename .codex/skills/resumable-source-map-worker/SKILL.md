@@ -29,8 +29,10 @@ The runner fails closed when the manifest population drifts from that lock. Reve
 For bounded review work:
 
 - `prepare` verifies/materializes the source, keys the PDF block cache by content SHA-256, locks the full original manifest row, and emits a compact review packet.
+- for structural classification set `scope.classification_required=true`; the packet carries `scope_blocks` for the full authorized physical PDF interval so reverse coverage is not reduced to candidate-local windows.
 - the model writes only decision fields; locked source fields are not part of the decision schema.
-- `validate` is the hard gate before any artifact publication. It enforces exact row order/set, locked-row hashes, point-locator policy, source-binding restrictions, and allowed dispositions.
+- missing publisher identities observed directly in the physical source belong in the decision set's first-class `augmentations` collection, not only in prose or an ad-hoc workbook side sheet.
+- `validate` is the hard gate before any artifact publication. It enforces exact row order/set, locked-row hashes, work/manifest/scope binding, point-locator policy, source-binding restrictions, allowed dispositions, augmentation scope/source binding, parent topology, cross-unit links, merge targets, and cycles.
 - with `ACCESS_GAP`/`SOURCE_GAP`, do not emit a canonical page or any VERIFIED state. Use candidate evidence only.
 
 Do not rebuild these checks ad hoc in chat when the runner can perform them deterministically.
