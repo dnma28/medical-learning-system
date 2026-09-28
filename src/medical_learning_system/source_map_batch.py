@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .native_pdf_text import native_pdf_page_count
 from .sources import sha256_file
@@ -62,10 +62,47 @@ class ReviewPacketRow(BaseModel):
     evidence: RowEvidence
 
 
+class BatchScope(BaseModel):
+    work_key: str = Field(min_length=1)
+    unit_field: str = Field(min_length=1)
+    authorized_units: list[str | int] = Field(min_length=1)
+    expected_counts: dict[str, int]
+    expected_total: int = Field(ge=1)
+    pdf_page_start: int | None = Field(default=None, ge=1)
+    pdf_page_end: int | None = Field(default=None, ge=1)
+    reverse_coverage_required: bool = True
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "BatchScope":
+        unit_keys = [str(unit) for unit in self.authorized_units]
+        if len(unit_keys) != len(set(unit_keys)):
+            raise ValueError("authorized_units contains duplicates")
+        if set(self.expected_counts) != set(unit_keys):
+            raise ValueError("expected_counts keys must exactly match authorized_units")
+        if any(count < 0 for count in self.expected_counts.values()):
+            raise ValueError("expected_counts must be non-negative")
+        if sum(self.expected_counts.values()) != self.expected_total:
+            raise ValueError("expected_counts do not sum to expected_total")
+        if (self.pdf_page_start is None) != (self.pdf_page_end is None):
+            raise ValueError("physical scope requires both pdf_page_start and pdf_page_end")
+        if (
+            self.pdf_page_start is not None
+            and self.pdf_page_end is not None
+            and self.pdf_page_end < self.pdf_page_start
+        ):
+            raise ValueError("pdf_page_end precedes pdf_page_start")
+        if self.reverse_coverage_required and self.pdf_page_start is None:
+            raise ValueError("reverse coverage requires an explicit physical PDF scope")
+        return self
+
+
 class ReviewPacket(BaseModel):
     schema_version: str = SCHEMA_VERSION
     batch_id: str = Field(min_length=1)
+    work_key: str | None = None
     manifest_sha256: str = Field(min_length=64, max_length=64)
+    scope_sha256: str | None = None
+    scope: BatchScope | None = None
     source: SourceIdentity
     evidence_pages: list[int] = Field(default_factory=list)
     point_locator_only: bool = True
@@ -96,6 +133,9 @@ class BatchDecision(BaseModel):
 class DecisionSet(BaseModel):
     schema_version: str = SCHEMA_VERSION
     batch_id: str = Field(min_length=1)
+    work_key: str | None = None
+    manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    scope_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     decisions: list[BatchDecision]
 
 
@@ -131,6 +171,39 @@ def load_manifest_rows(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]
     if len(node_ids) != len(set(node_ids)):
         raise ValueError("manifest contains duplicate node IDs")
     return metadata, rows
+
+
+def validate_manifest_scope(
+    metadata: dict[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    required: bool = False,
+) -> BatchScope | None:
+    raw_scope = metadata.get("scope")
+    if raw_scope is None:
+        if required:
+            raise ValueError("manifest requires a machine-readable scope lock")
+        return None
+    scope = BatchScope.model_validate(raw_scope)
+    counts = {str(unit): 0 for unit in scope.authorized_units}
+    for row in rows:
+        value = row.get(scope.unit_field)
+        key = str(value)
+        if key not in counts:
+            raise ValueError(
+                f"manifest row is outside authorized scope: "
+                f"{scope.unit_field}={value!r}"
+            )
+        counts[key] += 1
+    if counts != scope.expected_counts:
+        raise ValueError(
+            f"scope population mismatch: expected={scope.expected_counts}; actual={counts}"
+        )
+    if len(rows) != scope.expected_total:
+        raise ValueError(
+            f"scope total mismatch: expected={scope.expected_total}; actual={len(rows)}"
+        )
+    return scope
 
 
 def _row_id(row: dict[str, Any]) -> str:
@@ -202,6 +275,45 @@ def evidence_pages_for_rows(
     return sorted(pages)
 
 
+def evidence_pages_for_scope(
+    rows: list[dict[str, Any]],
+    *,
+    scope: BatchScope | None,
+    neighbor_pages: int = 1,
+    page_count: int | None = None,
+) -> list[int]:
+    pages = set(
+        evidence_pages_for_rows(
+            rows,
+            neighbor_pages=neighbor_pages,
+            page_count=page_count,
+        )
+    )
+    if scope is None or not scope.reverse_coverage_required:
+        return sorted(pages)
+
+    assert scope.pdf_page_start is not None
+    assert scope.pdf_page_end is not None
+    if page_count is not None and scope.pdf_page_end > page_count:
+        raise ValueError(
+            f"physical scope exceeds the PDF: "
+            f"{scope.pdf_page_start}-{scope.pdf_page_end}; page_count={page_count}"
+        )
+    candidate = {page for row in rows for page in candidate_pages(row)}
+    outside = sorted(
+        page
+        for page in candidate
+        if page < scope.pdf_page_start or page > scope.pdf_page_end
+    )
+    if outside:
+        raise ValueError(
+            f"candidate pages escape the physical scope: {outside}; "
+            f"scope={scope.pdf_page_start}-{scope.pdf_page_end}"
+        )
+    pages.update(range(scope.pdf_page_start, scope.pdf_page_end + 1))
+    return sorted(pages)
+
+
 def _best_evidence(
     row: dict[str, Any],
     blocks_by_page: dict[int, list[EvidenceBlock]],
@@ -261,6 +373,7 @@ def build_review_packet(
     point_locator_only: bool = True,
     allowed_dispositions: list[str] | None = None,
     evidence_pages: list[int] | None = None,
+    scope: BatchScope | None = None,
 ) -> ReviewPacket:
     by_page: dict[int, list[EvidenceBlock]] = {}
     for block in blocks:
@@ -275,9 +388,15 @@ def build_review_packet(
         )
         for row in rows
     ]
+    scope_sha256 = (
+        canonical_sha256(scope.model_dump(mode="json")) if scope is not None else None
+    )
     return ReviewPacket(
         batch_id=batch_id,
+        work_key=scope.work_key if scope is not None else None,
         manifest_sha256=manifest_sha256,
+        scope_sha256=scope_sha256,
+        scope=scope,
         source=source,
         evidence_pages=evidence_pages or sorted(by_page),
         point_locator_only=point_locator_only,
@@ -409,10 +528,12 @@ def prepare_from_pdf(
     expected_size: int | None = None,
     point_locator_only: bool = True,
     allowed_dispositions: list[str] | None = None,
+    require_scope: bool = True,
 ) -> ReviewPacket:
     raw_manifest = manifest_path.read_bytes()
     manifest_sha256 = hashlib.sha256(raw_manifest).hexdigest()
-    _, rows = load_manifest_rows(manifest_path)
+    metadata, rows = load_manifest_rows(manifest_path)
+    scope = validate_manifest_scope(metadata, rows, required=require_scope)
 
     if expected_size is not None and pdf_path.stat().st_size != expected_size:
         raise ValueError(
@@ -420,8 +541,9 @@ def prepare_from_pdf(
         )
 
     page_count_hint = native_pdf_page_count(pdf_path)
-    evidence_pages = evidence_pages_for_rows(
+    evidence_pages = evidence_pages_for_scope(
         rows,
+        scope=scope,
         neighbor_pages=1,
         page_count=page_count_hint,
     )
@@ -457,6 +579,7 @@ def prepare_from_pdf(
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions,
         evidence_pages=evidence_pages,
+        scope=scope,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -486,6 +609,15 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
         errors.append(
             f"batch_id mismatch: packet={packet.batch_id!r}, decisions={decisions.batch_id!r}"
         )
+    if packet.scope is not None:
+        if decisions.work_key != packet.work_key:
+            errors.append(
+                f"work_key mismatch: packet={packet.work_key!r}, decisions={decisions.work_key!r}"
+            )
+        if decisions.manifest_sha256 != packet.manifest_sha256:
+            errors.append("decision manifest_sha256 does not match the locked packet")
+        if decisions.scope_sha256 != packet.scope_sha256:
+            errors.append("decision scope_sha256 does not match the locked packet")
 
     packet_ids = [row.node_id for row in packet.rows]
     decision_ids = [decision.node_id for decision in decisions.decisions]
