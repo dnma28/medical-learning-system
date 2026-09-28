@@ -35,6 +35,39 @@ class Response:
         self.data = data
 
 
+class FakeRpc:
+    def __init__(self, client, name, params):
+        self.client = client
+        self.name = name
+        self.params = params
+
+    def execute(self):
+        if self.name != "mls_save_hoc90_blueprint":
+            raise AssertionError(f"unexpected RPC: {self.name}")
+        rows = self.client.tables.setdefault("mls_hoc90_blueprints", [])
+        if self.params["p_status"] == "active":
+            for row in rows:
+                if row.get("status") == "active" and row.get("lesson_id") != self.params["p_lesson_id"]:
+                    row["status"] = "superseded"
+        stored = {
+            "lesson_id": self.params["p_lesson_id"],
+            "status": self.params["p_status"],
+            "curriculum_position": self.params["p_curriculum_position"],
+            "source_spine": self.params["p_source_spine"],
+            "payload": self.params["p_payload"],
+            "updated_at": self.params["p_updated_at"],
+        }
+        existing = next(
+            (row for row in rows if row.get("lesson_id") == stored["lesson_id"]),
+            None,
+        )
+        if existing is None:
+            rows.append(dict(stored))
+        else:
+            existing.update(stored)
+        return Response(dict(stored))
+
+
 class FakeQuery:
     def __init__(self, client, table):
         self.client = client
@@ -125,6 +158,9 @@ class FakeClient:
 
     def table(self, name):
         return FakeQuery(self, name)
+
+    def rpc(self, name, params):
+        return FakeRpc(self, name, params)
 
 
 def source_ref(**updates):
