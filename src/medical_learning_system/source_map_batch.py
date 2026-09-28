@@ -695,7 +695,13 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                 f"{packet.source.page_count}"
             )
 
-    if packet.scope is not None and packet.scope.classification_required:
+    has_structural_decisions = any(
+        decision.final_classification is not None
+        for decision in decisions.decisions
+    ) or bool(decisions.augmentations)
+    if packet.scope is not None and (
+        packet.scope.classification_required or has_structural_decisions
+    ):
         required_classes = {"REQUIRED_SECTION", "REQUIRED_SUBSECTION"}
         classification_by_id = {
             decision.node_id: decision.final_classification
