@@ -230,7 +230,7 @@ def test_learning_state_is_written_incrementally_and_resumable():
         retrieval_successes=1,
         evidence_for_mastery=[event.event_id],
     )
-    store.upsert_mastery(mastery)
+    store.upsert_mastery(mastery, evidence_event_id=event.event_id)
 
     error = LearnerError(
         id="err-electrochemical-1",
@@ -239,7 +239,7 @@ def test_learning_state_is_written_incrementally_and_resumable():
         error_type=ErrorType.MISSING_CONDITION,
         status=ErrorStatus.RETEST_REQUIRED,
     )
-    store.upsert_error(error)
+    store.upsert_error(error, evidence_event_id=event.event_id)
 
     paused = session.pause(
         SessionCheckpoint(
@@ -262,6 +262,25 @@ def test_learning_state_is_written_incrementally_and_resumable():
 
     open_errors = store.list_open_errors(concept_id="electrochemical-gradient")
     assert [item.id for item in open_errors] == ["err-electrochemical-1"]
+
+
+def test_derived_state_writes_require_explicit_event_provenance():
+    store = SupabaseLearningStateStore(FakeClient())
+    mastery = ConceptMastery(concept_id="concept-a")
+    error = LearnerError(
+        id="error-a",
+        concept_id="concept-a",
+        statement="incorrect",
+    )
+    state = SkillState(skill_node_id="skill-a")
+
+    import pytest
+    with pytest.raises(TypeError):
+        store.upsert_mastery(mastery)
+    with pytest.raises(TypeError):
+        store.upsert_error(error)
+    with pytest.raises(TypeError):
+        store.upsert_skill_state(state)
 
 
 def test_learning_events_are_append_only():
@@ -343,7 +362,19 @@ def test_skill_tree_state_roundtrips_without_touching_concept_mastery():
     )
 
     store.upsert_skill_node(node)
-    store.upsert_skill_state(state)
+    skill_event = LearningEvent(
+        event_id="clinical-event-1",
+        session_id="skill-session-1",
+        event_type=LearningEventType.CLINICAL_TRANSFER,
+        concept_id="clinical-reasoning-case",
+        metadata={"skill_node_id": node.skill_node_id},
+    )
+    # Fake persistence does not enforce the session FK; production Supabase does.
+    store.append_event(skill_event)
+    store.upsert_skill_state(
+        state,
+        evidence_event_id=skill_event.event_id,
+    )
 
     loaded_node = store.get_skill_node(node.skill_node_id)
     loaded_state = store.get_skill_state(node.skill_node_id)
