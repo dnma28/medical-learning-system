@@ -190,3 +190,19 @@ def test_candidate_page_list_is_not_silently_truncated():
     row = {"node_id": "n1", "old_candidate_pages": list(range(1, 15))}
     from medical_learning_system.source_map_batch import candidate_pages
     assert candidate_pages(row) == list(range(1, 15))
+
+
+def test_evidence_page_window_clamps_at_pdf_end():
+    rows = [{"node_id": "n1", "selected_pdf_page": 20}]
+    assert evidence_pages_for_rows(
+        rows,
+        neighbor_pages=1,
+        page_count=20,
+    ) == [19, 20]
+
+
+def test_out_of_range_candidate_page_fails_before_extraction():
+    import pytest
+    rows = [{"node_id": "n1", "selected_pdf_page": 21}]
+    with pytest.raises(ValueError, match="candidate pages are outside"):
+        evidence_pages_for_rows(rows, neighbor_pages=1, page_count=20)
