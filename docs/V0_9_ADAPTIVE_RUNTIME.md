@@ -59,6 +59,20 @@ State is written incrementally after meaningful responses. Examples:
 
 The event trail is not replaced when mastery changes. Aggregate learner state is derived from evidence, not used to erase history.
 
+### Projection integrity
+
+Derived learner tables are not independent authorities. Every mutation of
+`mls_concept_mastery`, `mls_learner_errors`, and `mls_skill_state` must bind to
+an existing append-only `mls_learning_events.event_id` with matching concept/skill
+provenance. Scheduling-only projections may update retrieval timing/counters without
+changing M0–M7. Mastery-level changes require explicit event evidence and remain bounded
+by the evidence type/ceiling.
+
+The single-user runtime permits only one resumable (ACTIVE/PAUSED) HỌC90 session.
+DeepTutor response evidence plus pending-interaction clear/session resume is committed
+atomically and idempotently per interaction. ACTIVE blueprint replacement is likewise
+one guarded transaction.
+
 ## Session lifecycle
 
 ```text
