@@ -25,16 +25,16 @@ declare
     failed boolean;
     readiness jsonb;
 begin
-    readiness := public.mls_source_map_readiness('kandel-principles-neural-science');
+    insert into public.mls_logical_sources(
+        logical_source_id,title,kind,identity_status,source_map_state
+    ) values (book,'Synthetic integration fixture','textbook',
+              'verify_from_source','deep_anchored');
+    readiness := public.mls_source_map_readiness(book);
     if readiness->>'historical_source_map_state' <> 'deep_anchored'
        or readiness->>'structural_state' <> 'unmapped'
        or readiness->>'audited_state' <> 'uncertified'
        or readiness->>'ready_for_hoc90' <> 'false'
     then raise exception 'historical anchor label became audited readiness'; end if;
-    insert into public.mls_logical_sources(
-        logical_source_id,title,kind,identity_status,source_map_state
-    ) values (book,'Synthetic integration fixture','textbook',
-              'verify_from_source','unmapped');
     insert into public.mls_sources(
         source_id,logical_source_id,provider,provider_file_id,title,mime_type,
         modified_time,kind,status,content_sha256,metadata_fingerprint
