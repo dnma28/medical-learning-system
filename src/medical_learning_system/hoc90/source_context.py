@@ -114,7 +114,7 @@ class SupabaseHoc90SourceContextResolver:
             raise SourceContextUnavailable(
                 "The current promoted Source Map has no active versioned evidence "
                 "migration. Compile exact current-stage evidence before HỌC90 use; "
-                "legacy fallback is disabled for promoted books.",
+                "Legacy fallback is disabled for promoted books.",
                 code=SourceContextErrorCode.SOURCE_GAP,
             )
         elif has_migration_history:
