@@ -3,16 +3,15 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
-from .sources import sha256_file
-from collections.abc import Callable, Iterator
-
 from .compiler import CompilationOutcome, IncrementalSourceCompiler
 from .drive_metadata import DriveFileMetadata
 from .source_registry import SourceRecord
+from .sources import sha256_file
 
 
 DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
@@ -190,10 +189,12 @@ class GoogleDriveSourceFetcher:
             target = content_dir / f"{digest}.pdf"
             if not target.exists():
                 temp_path.replace(target)
-            elif expected_size is not None and target.stat().st_size != expected_size:
+            elif (
+                (expected_size is not None and target.stat().st_size != expected_size)
+                or sha256_file(target) != digest
+            ):
                 raise DriveSourceError(
-                    f"cached content size mismatch for {file_id}: "
-                    f"expected {expected_size}, got {target.stat().st_size}"
+                    f"cached content integrity mismatch for {file_id}: {target}"
                 )
 
         index_payload = {
