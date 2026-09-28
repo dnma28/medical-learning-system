@@ -1,0 +1,55 @@
+name: Learning events integrity
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'tests/sql/learning_events_append_only_contract.sql'
+      - '.github/workflows/learning-events-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'tests/sql/learning_events_append_only_contract.sql'
+      - '.github/workflows/learning-events-integrity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated-contract-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: isolated-contract-only
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated schema and test append-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create role anon;
+          create role authenticated;
+          create role service_role bypassrls;
+          SQL
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/0001_core_storage.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/0009_adaptive_learning_runtime.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260928172534_learning_events_append_only.sql
+          # Replay must preserve the same guards without touching data.
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260928172534_learning_events_append_only.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/learning_events_append_only_contract.sql
+          test "$(psql -Atc 'select count(*) from public.mls_learning_events')" = 0
+          test "$(psql -Atc 'select count(*) from public.mls_learning_sessions')" = 0
