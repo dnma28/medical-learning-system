@@ -28,7 +28,7 @@ begin
     insert into public.mls_logical_sources(
         logical_source_id,title,kind,identity_status,source_map_state
     ) values (book,'Synthetic integration fixture','textbook',
-              'verify_from_source','deep_anchored');
+              'verified','deep_anchored');
     readiness := public.mls_source_map_readiness(book);
     if readiness->>'historical_source_map_state' <> 'deep_anchored'
        or readiness->>'structural_state' <> 'unmapped'
@@ -65,6 +65,19 @@ begin
         qa,'ignored-and-recomputed');
     select payload_sha256 into digest1 from public.mls_source_map_staging
     where logical_source_id=book and staging_version=1;
+
+    update public.mls_logical_sources set identity_status='verify_from_source'
+    where logical_source_id=book;
+    failed := false;
+    begin
+        perform public.mls_certify_source_map(book,1,digest1);
+    exception when others then failed := true; end;
+    if not failed then
+        raise exception 'unverified logical identity was certified';
+    end if;
+    update public.mls_logical_sources set identity_status='verified'
+    where logical_source_id=book;
+
     certificate1 := public.mls_certify_source_map(book,1,digest1);
     if public.mls_promote_source_map(book,1,certificate1,0) <> 1 then
         raise exception 'successful promotion returned incorrect version';
