@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .native_pdf_text import native_pdf_page_count
 from .sources import sha256_file
 
 
@@ -178,15 +179,26 @@ def evidence_pages_for_rows(
     rows: list[dict[str, Any]],
     *,
     neighbor_pages: int = 1,
+    page_count: int | None = None,
 ) -> list[int]:
     if neighbor_pages < 0:
         raise ValueError("neighbor_pages must be >= 0")
 
+    required = sorted({page for row in rows for page in candidate_pages(row)})
+    if page_count is not None:
+        outside = [page for page in required if page < 1 or page > page_count]
+        if outside:
+            raise ValueError(
+                f"candidate pages are outside the PDF: {outside}; page_count={page_count}"
+            )
+
     pages: set[int] = set()
-    for row in rows:
-        for page in candidate_pages(row):
-            start = max(1, page - neighbor_pages)
-            pages.update(range(start, page + neighbor_pages + 1))
+    for page in required:
+        start = max(1, page - neighbor_pages)
+        end = page + neighbor_pages
+        if page_count is not None:
+            end = min(page_count, end)
+        pages.update(range(start, end + 1))
     return sorted(pages)
 
 
@@ -326,7 +338,11 @@ def extract_pdf_blocks_cached(
     document = fitz.open(str(pdf_path))
     try:
         page_count = len(document)
-        requested_pages = list(range(1, page_count + 1)) if pages is None else sorted(set(pages))
+        requested_pages = (
+            list(range(1, page_count + 1))
+            if pages is None
+            else sorted(set(pages))
+        )
         outside = [page for page in requested_pages if page < 1 or page > page_count]
         if outside:
             raise ValueError(
@@ -403,12 +419,21 @@ def prepare_from_pdf(
             f"source size mismatch: expected {expected_size}, got {pdf_path.stat().st_size}"
         )
 
-    evidence_pages = evidence_pages_for_rows(rows, neighbor_pages=1)
+    page_count_hint = native_pdf_page_count(pdf_path)
+    evidence_pages = evidence_pages_for_rows(
+        rows,
+        neighbor_pages=1,
+        page_count=page_count_hint,
+    )
     digest, page_count, blocks = extract_pdf_blocks_cached(
         pdf_path,
         cache_dir,
         pages=evidence_pages,
     )
+    if page_count != page_count_hint:
+        raise ValueError(
+            f"PDF page count changed during prepare: {page_count_hint} -> {page_count}"
+        )
     if expected_sha256 is not None and digest != expected_sha256:
         raise ValueError(
             f"source SHA-256 mismatch: expected {expected_sha256}, got {digest}"
