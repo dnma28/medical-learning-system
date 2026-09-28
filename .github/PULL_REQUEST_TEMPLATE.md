@@ -12,7 +12,12 @@ Closes #<!-- issue number -->
 
 ## Review
 
-<!-- Reviewer role and requested source/code checks. -->
+<!-- Keep Status: PENDING until an independent reviewer checks the exact current HEAD.
+After review, replace with PASS/APPROVED, the exact 40-char HEAD SHA, and the durable
+GitHub issue-comment or PR-review URL. Any new commit makes the review stale. -->
+Status: PENDING
+Commit: <40-char HEAD SHA>
+Evidence: <GitHub #issuecomment-... or #pullrequestreview-... URL>
 
 ## Risk and provenance
 
