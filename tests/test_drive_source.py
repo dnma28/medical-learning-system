@@ -200,3 +200,14 @@ def test_compile_drive_source_refreshes_metadata_and_preserves_classification(tm
     assert refreshed.edition == "6"
     assert payload == PDF_BYTES
     assert list(tmp_path.iterdir()) == []
+
+
+def test_cache_pdf_reuses_verified_content_without_second_media_download(tmp_path):
+    source_fetcher, service = fetcher()
+
+    first = source_fetcher.cache_pdf("drive-123", cache_dir=tmp_path)
+    second = source_fetcher.cache_pdf("drive-123", cache_dir=tmp_path)
+
+    assert first == second
+    assert first.read_bytes() == PDF_BYTES
+    assert service.files_api.media_requests == 1

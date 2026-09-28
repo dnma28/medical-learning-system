@@ -11,10 +11,12 @@ from typing import Any, Protocol
 from .compiler import CompilationOutcome, IncrementalSourceCompiler
 from .drive_metadata import DriveFileMetadata
 from .source_registry import SourceRecord
+from .sources import sha256_file
 
 
 DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 PDF_MIME_TYPE = "application/pdf"
+DRIVE_DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024
 
 
 class DriveSourceError(RuntimeError):
@@ -146,6 +148,65 @@ class GoogleDriveSourceFetcher:
                 handle.close()
             path.unlink(missing_ok=True)
 
+    def cache_pdf(
+        self,
+        file_id: str,
+        *,
+        cache_dir: Path,
+    ) -> Path:
+        """Persist an exact Drive PDF locally by content hash for later batch reuse."""
+        raw = self._get_raw_metadata(file_id)
+        _validate_downloadable_pdf(raw)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        index_dir = cache_dir / "by-drive"
+        content_dir = cache_dir / "by-sha256"
+        index_dir.mkdir(parents=True, exist_ok=True)
+        content_dir.mkdir(parents=True, exist_ok=True)
+        index_path = index_dir / f"{file_id}.json"
+
+        expected_size = int(raw["size"]) if raw.get("size") is not None else None
+        current_fingerprint = {
+            "file_id": file_id,
+            "size_bytes": expected_size,
+            "modified_time": raw.get("modifiedTime"),
+        }
+
+        if index_path.exists():
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            digest = index.get("sha256")
+            target = content_dir / f"{digest}.pdf" if digest else None
+            if (
+                target is not None
+                and target.exists()
+                and all(index.get(key) == value for key, value in current_fingerprint.items())
+                and (expected_size is None or target.stat().st_size == expected_size)
+                and sha256_file(target) == digest
+            ):
+                return target
+
+        with self.materialize_pdf(file_id, directory=cache_dir) as temp_path:
+            digest = sha256_file(temp_path)
+            target = content_dir / f"{digest}.pdf"
+            if not target.exists():
+                temp_path.replace(target)
+            elif (
+                (expected_size is not None and target.stat().st_size != expected_size)
+                or sha256_file(target) != digest
+            ):
+                raise DriveSourceError(
+                    f"cached content integrity mismatch for {file_id}: {target}"
+                )
+
+        index_payload = {
+            **current_fingerprint,
+            "sha256": digest,
+        }
+        index_path.write_text(
+            json.dumps(index_payload, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        return target
+
     def _get_raw_metadata(self, file_id: str) -> dict[str, Any]:
         if not file_id.strip():
             raise ValueError("file_id cannot be empty")
@@ -207,4 +268,4 @@ def _google_downloader_factory(handle: Any, request: Any) -> Downloader:
             "Google Drive support is not installed. "
             "Install with: pip install -e '.[google-drive]'"
         ) from exc
-    return MediaIoBaseDownload(handle, request)
+    return MediaIoBaseDownload(handle, request, chunksize=DRIVE_DOWNLOAD_CHUNK_SIZE)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import tempfile
 from pathlib import Path
 
 from medical_learning_system.drive_source import GoogleDriveSourceFetcher, build_google_drive_service
@@ -62,12 +61,11 @@ def _prepare(args: argparse.Namespace) -> None:
         packet = prepare_from_pdf(pdf_path=args.pdf, **kwargs)
     else:
         fetcher = GoogleDriveSourceFetcher(build_google_drive_service())
-        with tempfile.TemporaryDirectory(prefix="mls-source-map-batch-") as directory:
-            with fetcher.materialize_pdf(
-                args.drive_file_id,
-                directory=Path(directory),
-            ) as pdf_path:
-                packet = prepare_from_pdf(pdf_path=pdf_path, **kwargs)
+        pdf_path = fetcher.cache_pdf(
+            args.drive_file_id,
+            cache_dir=args.cache_dir / "sources",
+        )
+        packet = prepare_from_pdf(pdf_path=pdf_path, **kwargs)
 
     print(json.dumps({
         "status": "PREPARED",
