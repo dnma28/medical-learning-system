@@ -26,6 +26,13 @@ ChatGPT / HỌC90
 Keep these authorities separate:
 
 - original textbook bytes are the source-material authority;
+- `mls_sources.status` is the legacy physical-parser lifecycle
+  (`new/parsed/indexed/graphed/compiled/stale/error`), **not** Source Map
+  verification/readiness; current registry rows may legitimately remain `new`;
+- `mls_logical_sources.source_map_state` is historical catalog metadata, not runtime
+  readiness authority; use `mls_source_map_readiness(...)`;
+- `identity_status` is separate again: new Source Map certification must fail closed
+  unless the logical identity is explicitly `verified`;
 - certified/promoted Source Maps are the source-structure authority;
 - Canonical Medical KG is not learner state and must not be auto-written by extraction;
 - Student Model, Error Graph, Skill Tree, HỌC90 sessions, and append-only LearningEvents
