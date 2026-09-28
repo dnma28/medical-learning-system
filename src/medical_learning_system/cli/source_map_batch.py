@@ -35,6 +35,11 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("--expected-size", type=int)
     prepare.add_argument("--allow-page-ranges", action="store_true")
     prepare.add_argument("--allowed-disposition", action="append", default=[])
+    prepare.add_argument(
+        "--allow-unscoped-manifest",
+        action="store_true",
+        help="Legacy escape hatch. New bounded work must carry a manifest scope lock.",
+    )
 
     validate = sub.add_parser("validate")
     validate.add_argument("--packet", type=Path, required=True)
@@ -56,6 +61,7 @@ def _prepare(args: argparse.Namespace) -> None:
         expected_size=args.expected_size,
         point_locator_only=not args.allow_page_ranges,
         allowed_dispositions=args.allowed_disposition,
+        require_scope=not args.allow_unscoped_manifest,
     )
     if args.pdf is not None:
         packet = prepare_from_pdf(pdf_path=args.pdf, **kwargs)
@@ -70,6 +76,8 @@ def _prepare(args: argparse.Namespace) -> None:
     print(json.dumps({
         "status": "PREPARED",
         "batch_id": packet.batch_id,
+        "work_key": packet.work_key,
+        "scope_sha256": packet.scope_sha256,
         "rows": len(packet.rows),
         "source_sha256": packet.source.content_sha256,
         "source_pages": packet.source.page_count,
