@@ -13,7 +13,7 @@ from .native_pdf_text import native_pdf_page_count
 from .sources import sha256_file
 
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 BLOCK_CACHE_VERSION = "page-blocks-v1"
 _DEFAULT_HEADING_FIELDS = (
     "heading_expected_raw",
@@ -71,6 +71,7 @@ class BatchScope(BaseModel):
     pdf_page_start: int | None = Field(default=None, ge=1)
     pdf_page_end: int | None = Field(default=None, ge=1)
     reverse_coverage_required: bool = True
+    classification_required: bool = False
 
     @model_validator(mode="after")
     def validate_scope(self) -> "BatchScope":
@@ -105,6 +106,7 @@ class ReviewPacket(BaseModel):
     scope: BatchScope | None = None
     source: SourceIdentity
     evidence_pages: list[int] = Field(default_factory=list)
+    scope_blocks: list[EvidenceBlock] = Field(default_factory=list)
     point_locator_only: bool = True
     allowed_dispositions: list[str] = Field(default_factory=list)
     rows: list[ReviewPacketRow]
@@ -130,6 +132,27 @@ class BatchDecision(BaseModel):
     notes: str | None = None
 
 
+
+class SourceAugmentation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    augmentation_observation_id: str = Field(min_length=1)
+    unit_value: str | int
+    pdf_page: int = Field(ge=1)
+    physical_block_indices: list[int] = Field(min_length=1)
+    exact_source_text: str = Field(min_length=1)
+    extraction_raw_text: str | None = None
+    font_span_evidence: dict[str, Any] = Field(default_factory=dict)
+    bbox: tuple[float, float, float, float]
+    source_id: str = Field(min_length=1)
+    source_sha256: str = Field(min_length=64, max_length=64)
+    source_observed: bool = True
+    final_classification: str
+    canonical_parent_observation_id: str | None = None
+    page_end: int | None = Field(default=None, ge=1)
+    notes: str | None = None
+
+
 class DecisionSet(BaseModel):
     schema_version: str = SCHEMA_VERSION
     batch_id: str = Field(min_length=1)
@@ -137,6 +160,7 @@ class DecisionSet(BaseModel):
     manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     scope_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     decisions: list[BatchDecision]
+    augmentations: list[SourceAugmentation] = Field(default_factory=list)
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -399,6 +423,11 @@ def build_review_packet(
         scope=scope,
         source=source,
         evidence_pages=evidence_pages or sorted(by_page),
+        scope_blocks=(
+            sorted(blocks, key=lambda block: (block.page, block.block_index))
+            if scope is not None and scope.reverse_coverage_required
+            else []
+        ),
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions or [],
         rows=packet_rows,
@@ -665,6 +694,131 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                 f"{decision.node_id}: PDF page {page} exceeds source page count "
                 f"{packet.source.page_count}"
             )
+
+    if packet.scope is not None and packet.scope.classification_required:
+        required_classes = {"REQUIRED_SECTION", "REQUIRED_SUBSECTION"}
+        classification_by_id = {
+            decision.node_id: decision.final_classification
+            for decision in decisions.decisions
+        }
+        parent_by_id = {
+            decision.node_id: decision.canonical_parent_observation_id
+            for decision in decisions.decisions
+        }
+        unit_by_id = {
+            row.node_id: str(row.locked.get(packet.scope.unit_field))
+            for row in packet.rows
+        }
+
+        packet_id_set = set(packet_ids)
+        augmentation_ids = [
+            augmentation.augmentation_observation_id
+            for augmentation in decisions.augmentations
+        ]
+        if len(augmentation_ids) != len(set(augmentation_ids)):
+            errors.append("augmentations contain duplicate observation IDs")
+        collisions = sorted(packet_id_set.intersection(augmentation_ids))
+        if collisions:
+            errors.append(f"augmentation IDs collide with frozen rows: {collisions}")
+
+        for augmentation in decisions.augmentations:
+            augmentation_id = augmentation.augmentation_observation_id
+            classification_by_id[augmentation_id] = augmentation.final_classification
+            parent_by_id[augmentation_id] = augmentation.canonical_parent_observation_id
+            unit_by_id[augmentation_id] = str(augmentation.unit_value)
+            if unit_by_id[augmentation_id] not in {
+                str(unit) for unit in packet.scope.authorized_units
+            }:
+                errors.append(
+                    f"{augmentation_id}: augmentation is outside authorized scope"
+                )
+            if (
+                packet.scope.pdf_page_start is not None
+                and packet.scope.pdf_page_end is not None
+                and not (
+                    packet.scope.pdf_page_start
+                    <= augmentation.pdf_page
+                    <= packet.scope.pdf_page_end
+                )
+            ):
+                errors.append(
+                    f"{augmentation_id}: augmentation page is outside physical scope"
+                )
+            if augmentation.source_id != packet.source.source_id:
+                errors.append(f"{augmentation_id}: augmentation source_id mismatch")
+            if augmentation.source_sha256 != packet.source.content_sha256:
+                errors.append(f"{augmentation_id}: augmentation source SHA mismatch")
+            if not augmentation.source_observed:
+                errors.append(
+                    f"{augmentation_id}: augmentation must be source_observed=true"
+                )
+            if augmentation.page_end is not None:
+                errors.append(f"{augmentation_id}: augmentation page_end must be null")
+            if augmentation.final_classification not in required_classes:
+                errors.append(
+                    f"{augmentation_id}: augmentation must be a required structural identity"
+                )
+
+        all_ids = set(classification_by_id)
+        for decision in decisions.decisions:
+            classification = decision.final_classification
+            if decision.resolution_status == "VERIFIED" and not classification:
+                errors.append(
+                    f"{decision.node_id}: VERIFIED classification row has no final_classification"
+                )
+            if classification == "REQUIRED_SUBSECTION":
+                parent = decision.canonical_parent_observation_id
+                if not parent or parent not in all_ids:
+                    errors.append(
+                        f"{decision.node_id}: REQUIRED_SUBSECTION has missing parent"
+                    )
+                elif classification_by_id.get(parent) not in required_classes:
+                    errors.append(
+                        f"{decision.node_id}: REQUIRED_SUBSECTION parent is not structural"
+                    )
+                elif unit_by_id.get(parent) != unit_by_id.get(decision.node_id):
+                    errors.append(
+                        f"{decision.node_id}: REQUIRED_SUBSECTION parent crosses scope unit"
+                    )
+            if classification == "MERGE_WITH_ADJACENT_SOURCE_IDENTITY":
+                target = decision.merge_target_observation_id
+                if not target or target not in all_ids:
+                    errors.append(f"{decision.node_id}: MERGE has missing target")
+                elif classification_by_id.get(target) == "MERGE_WITH_ADJACENT_SOURCE_IDENTITY":
+                    errors.append(f"{decision.node_id}: MERGE cannot target another MERGE")
+                elif unit_by_id.get(target) != unit_by_id.get(decision.node_id):
+                    errors.append(f"{decision.node_id}: MERGE target crosses scope unit")
+
+        for augmentation in decisions.augmentations:
+            if augmentation.final_classification == "REQUIRED_SUBSECTION":
+                parent = augmentation.canonical_parent_observation_id
+                augmentation_id = augmentation.augmentation_observation_id
+                if not parent or parent not in all_ids:
+                    errors.append(
+                        f"{augmentation_id}: REQUIRED_SUBSECTION augmentation has missing parent"
+                    )
+                elif classification_by_id.get(parent) not in required_classes:
+                    errors.append(
+                        f"{augmentation_id}: augmentation parent is not structural"
+                    )
+                elif unit_by_id.get(parent) != unit_by_id.get(augmentation_id):
+                    errors.append(
+                        f"{augmentation_id}: augmentation parent crosses scope unit"
+                    )
+
+        for node_id in all_ids:
+            seen: set[str] = set()
+            cursor = node_id
+            while cursor in all_ids:
+                if cursor in seen:
+                    errors.append(f"{node_id}: structural parent cycle detected")
+                    break
+                seen.add(cursor)
+                parent = parent_by_id.get(cursor)
+                if not parent:
+                    break
+                cursor = parent
+
     return errors
 
 
