@@ -35,8 +35,26 @@ class FakeStore:
         self.session = session
         return session
 
-    def append_event(self, event):
+    def commit_deeptutor_submission(
+        self,
+        *,
+        event,
+        resumed_session,
+        interaction_id,
+    ):
+        existing = next(
+            (
+                item
+                for item in self.events
+                if item.metadata.get("deeptutor_interaction_id") == interaction_id
+            ),
+            None,
+        )
+        if existing is not None:
+            assert existing.event_id == event.event_id
+            return existing
         self.events.append(event)
+        self.session = resumed_session
         return event
 
 
@@ -110,6 +128,44 @@ def test_prepare_pauses_session_and_submit_appends_event_then_resumes():
         assert event.metadata["automatic_mastery_credit"] is False
         assert store.session.status.value == "active"
         assert store.session.checkpoint.pending_deeptutor_interaction is None
+
+    asyncio.run(scenario())
+
+
+def test_submit_uses_stable_event_identity_for_interaction():
+    async def scenario():
+        async def runner(task, reading, source_text):
+            return {
+                "type": "card",
+                "title": "Study guidance",
+                "message": "Explain.",
+                "payload": {"steps": ["one"]},
+            }
+
+        store = FakeStore(_session())
+        bridge = Hoc90DeepTutorBridge(
+            store=store,
+            executor=DeepTutorRuntimeExecutor(runner=runner),
+        )
+        prepared = await bridge.prepare(
+            session_id="session-1",
+            decision=_decision(),
+            source_context=["verified passage"],
+            reading=DeepTutorReadingInput(material_id="guyton"),
+        )
+        event = bridge.submit(
+            session_id="session-1",
+            submission=DeepTutorSubmission(
+                interaction_id=prepared.interaction.interaction_id,
+                learner_response="answer",
+            ),
+        )
+        expected = Hoc90DeepTutorBridge._stable_submission_event_id(
+            "session-1", prepared.interaction.interaction_id
+        )
+        assert event.event_id == expected
+        assert len(store.events) == 1
+        assert store.session.status.value == "active"
 
     asyncio.run(scenario())
 
