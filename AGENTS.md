@@ -79,3 +79,11 @@ These instructions apply to the whole repository unless a deeper AGENTS.md overr
 
 Upstream inspiration:
 - https://github.com/DietrichGebert/ponytail
+
+## Resumable Source Map worker skill
+
+For bounded Source Map evidence/classification/repair work that may span many tool calls,
+use the repo-scoped Codex skill at
+`.codex/skills/resumable-source-map-worker/SKILL.md`. It defines the live-first resume,
+scope-lock, dedup, artifact readback, concurrency, and checkpoint protocol. The skill does
+not override a narrower user-authorized scope or the source-integrity invariants above.
