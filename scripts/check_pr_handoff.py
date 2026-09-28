@@ -13,10 +13,16 @@ _SECTION = re.compile(r"^## (.+?)\s*$", re.MULTILINE)
 _REQUIRED = ("Issue", "Scope", "Verification", "Review")
 _SOURCE_GATED = ("source_map", "supabase/migrations/")
 _DOC_PREFIXES = ("docs/", ".github/ISSUE_TEMPLATE/")
+_REVIEW_STATUS = re.compile(r"(?im)^\s*Status:\s*(PASS|APPROVED)\s*$")
+_REVIEW_COMMIT = re.compile(r"(?im)^\s*Commit:\s*([0-9a-f]{40})\s*$")
+_REVIEW_EVIDENCE = re.compile(
+    r"(?im)^\s*Evidence:\s*https://github\.com/[^\s]+"
+    r"(?:#issuecomment-\d+|#pullrequestreview-\d+)\s*$"
+)
 
 
-def validate(body: str, paths: list[str]) -> list[str]:
-    """Return missing handoff fields; documentation-only PRs have a lighter gate."""
+def validate(body: str, paths: list[str], head_sha: str | None = None) -> list[str]:
+    """Return handoff/review gate errors; documentation-only PRs have a lighter risk gate."""
     matches = list(_SECTION.finditer(body))
     sections = {
         match.group(1): body[match.end() : matches[index + 1].start() if index + 1 < len(matches) else len(body)].strip()
@@ -30,6 +36,19 @@ def validate(body: str, paths: list[str]) -> list[str]:
     errors = [f"Missing or empty section: ## {name}" for name in _REQUIRED if not filled(name)]
     if filled("Issue") and not re.search(r"(?<!\w)#\d+\b", sections["Issue"]):
         errors.append("## Issue must reference a numbered GitHub issue")
+    if filled("Review"):
+        review = sections["Review"]
+        if not _REVIEW_STATUS.search(review):
+            errors.append("## Review requires a 'Status: PASS' or 'Status: APPROVED' line")
+        commit = _REVIEW_COMMIT.search(review)
+        if commit is None:
+            errors.append("## Review requires 'Commit: <40-char head SHA>'")
+        elif head_sha is not None and commit.group(1) != head_sha:
+            errors.append(
+                f"## Review is stale: reviewed {commit.group(1)}, current head is {head_sha}"
+            )
+        if not _REVIEW_EVIDENCE.search(review):
+            errors.append("## Review requires a GitHub issue-comment or PR-review evidence URL")
     source_gated = any(
         marker in path.casefold() for path in paths for marker in _SOURCE_GATED
     )
@@ -75,6 +94,7 @@ def main() -> int:
     errors = validate(
         pr.get("body") or "",
         changed_paths(os.environ["GITHUB_REPOSITORY"], pr["number"], os.environ["GH_TOKEN"]),
+        pr["head"]["sha"],
     )
     for error in errors:
         print(f"::error::{error}")
