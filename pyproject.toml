@@ -40,7 +40,8 @@ mls-kg-v5-audit = "medical_learning_system.cli.kg_v5_audit:main"
 mls-sync-source-catalog = "medical_learning_system.cli.sync_source_catalog:main"
 mls-hoc90-deeptutor = "medical_learning_system.cli.hoc90_deeptutor:main"
 mls-hoc90-bootstrap = "medical_learning_system.cli.hoc90_bootstrap:main"
-mls-compile-source-map-evidence = "medical_learning_system.cli.compile_source_map_evidence:main"\nmls-source-map-batch = "medical_learning_system.cli.source_map_batch:main"
+mls-compile-source-map-evidence = "medical_learning_system.cli.compile_source_map_evidence:main"
+mls-source-map-batch = "medical_learning_system.cli.source_map_batch:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
