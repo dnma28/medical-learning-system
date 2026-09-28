@@ -13,7 +13,9 @@ Update the check and its tests.
 ## Verification
 pytest -q tests/test_pr_handoff.py
 ## Review
-Independent reviewer checks path classification.
+Status: PASS
+Commit: 1111111111111111111111111111111111111111
+Evidence: https://github.com/dnma28/medical-learning-system/issues/186#issuecomment-123456
 ## Risk and provenance
 No source material or runtime writes.
 ## Gate evidence
@@ -22,8 +24,11 @@ Synthetic Source Map cases passed.
 
 
 def test_code_and_source_map_handoff_passes_with_all_fields():
-    assert module.validate(_COMPLETE, ["scripts/check_pr_handoff.py"]) == []
-    assert module.validate(_COMPLETE, ["src/medical_learning_system/source_map.py"]) == []
+    head = "1" * 40
+    assert module.validate(_COMPLETE, ["scripts/check_pr_handoff.py"], head) == []
+    assert module.validate(
+        _COMPLETE, ["src/medical_learning_system/source_map.py"], head
+    ) == []
 
 
 def test_missing_fields_fail_closed():
@@ -44,3 +49,21 @@ def test_docs_only_and_source_migration_gates():
     assert any("Risk and provenance" in error for error in missing)
     assert any("Gate evidence" in error for error in missing)
     assert any("No changed files" in error for error in module.validate(_COMPLETE, []))
+
+
+
+def test_review_gate_rejects_pending_missing_evidence_and_stale_commit():
+    pending = _COMPLETE.replace("Status: PASS", "Status: PENDING")
+    assert any("Status: PASS" in error for error in module.validate(
+        pending, ["src/model.py"], "1" * 40
+    ))
+    no_evidence = _COMPLETE.replace(
+        "Evidence: https://github.com/dnma28/medical-learning-system/issues/186#issuecomment-123456\n",
+        "",
+    )
+    assert any("evidence URL" in error for error in module.validate(
+        no_evidence, ["src/model.py"], "1" * 40
+    ))
+    assert any("stale" in error for error in module.validate(
+        _COMPLETE, ["src/model.py"], "2" * 40
+    ))
