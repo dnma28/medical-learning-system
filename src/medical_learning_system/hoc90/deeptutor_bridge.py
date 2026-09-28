@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field, model_validator
@@ -17,7 +18,13 @@ from .session import Hoc90Session, LearningEvent, SessionCheckpoint, SourceSpine
 class LearningStateStore(Protocol):
     def get_session(self, session_id: str) -> Hoc90Session | None: ...
     def save_session(self, session: Hoc90Session) -> Hoc90Session: ...
-    def append_event(self, event: LearningEvent) -> LearningEvent: ...
+    def commit_deeptutor_submission(
+        self,
+        *,
+        event: LearningEvent,
+        resumed_session: Hoc90Session,
+        interaction_id: str,
+    ) -> LearningEvent: ...
 
 
 class DeepTutorSubmission(BaseModel):
@@ -164,14 +171,29 @@ class Hoc90DeepTutorBridge:
                 source_ref=checkpoint.source_ref,
             )
 
-        self.store.append_event(event)
-
+        event = event.model_copy(
+            update={
+                "event_id": self._stable_submission_event_id(
+                    session_id, submission.interaction_id
+                )
+            }
+        )
         cleared = checkpoint.model_copy(
             update={"pending_deeptutor_interaction": None}
         )
         resumed = session.model_copy(update={"checkpoint": cleared}).resume()
-        self.store.save_session(resumed)
-        return event
+        return self.store.commit_deeptutor_submission(
+            event=event,
+            resumed_session=resumed,
+            interaction_id=submission.interaction_id,
+        )
+
+    @staticmethod
+    def _stable_submission_event_id(session_id: str, interaction_id: str) -> str:
+        digest = sha256(
+            f"{session_id}|{interaction_id}".encode("utf-8")
+        ).hexdigest()
+        return f"deeptutor-{digest[:40]}"
 
     def _require_session(self, session_id: str) -> Hoc90Session:
         session = self.store.get_session(session_id)
