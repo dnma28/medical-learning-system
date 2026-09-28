@@ -321,5 +321,82 @@ begin
        or (select count(*) from public.mls_source_map_nodes
            where logical_source_id=book) <> 6
     then raise exception 'failed staging changed runtime map/version'; end if;
+
+    -- Newer unpromoted WIP must not invalidate the already promoted runtime.
+    readiness := public.mls_source_map_readiness(book);
+    if readiness->>'ready_for_hoc90' <> 'true'
+       or readiness->>'readiness_staging_version' <> '9'
+       or readiness->>'latest_staging_version' <> '11'
+       or readiness->>'has_newer_unpromoted_staging' <> 'true'
+    then raise exception 'newer draft incorrectly invalidated promoted readiness'; end if;
+
+    -- Runtime parity covers every field promotion materializes.
+    update public.mls_source_map_nodes set freshness_required=true
+    where logical_source_id=book and node_id='chapter-v2';
+    if public.mls_runtime_matches_staging(book,9)
+    then raise exception 'freshness_required drift was ignored by runtime parity'; end if;
+    update public.mls_source_map_nodes set freshness_required=false
+    where logical_source_id=book and node_id='chapter-v2';
+    if not public.mls_runtime_matches_staging(book,9)
+    then raise exception 'runtime parity did not recover after freshness repair'; end if;
+
+    -- Atomic staging allocates exactly one next version and rejects stale writers.
+    if (public.mls_stage_source_map(
+            book,11,proposal,5,'test-parser-1',
+            pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+                'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+            qa
+        )->>'staging_version')::bigint <> 12
+    then raise exception 'atomic staging allocated wrong version'; end if;
+    failed := false;
+    begin
+        perform public.mls_stage_source_map(
+            book,11,proposal,5,'test-parser-1',
+            pg_catalog.jsonb_build_object(physical,pg_catalog.jsonb_build_object(
+                'source_sha256',source_hash,'extraction_sha256',extraction_hash)),
+            qa
+        );
+    exception when others then failed := true; end;
+    if not failed then raise exception 'stale concurrent staging writer was accepted'; end if;
+
+    -- One durable work key has one active owner and completed keys cannot rerun.
+    declare
+        lease jsonb;
+        token uuid;
+    begin
+        lease := public.mls_claim_source_map_work(
+            'source-map:synthetic:b1',book,'B1','worker-a',
+            repeat('1',64),repeat('2',64),600
+        );
+        token := (lease->>'lease_token')::uuid;
+        failed := false;
+        begin
+            perform public.mls_claim_source_map_work(
+                'source-map:synthetic:b1',book,'B1','worker-b',
+                repeat('1',64),repeat('2',64),600
+            );
+        exception when others then failed := true; end;
+        if not failed then raise exception 'concurrent work-key claim was accepted'; end if;
+
+        perform public.mls_release_source_map_work(
+            'source-map:synthetic:b1',token
+        );
+        lease := public.mls_claim_source_map_work(
+            'source-map:synthetic:b1',book,'B1','worker-b',
+            repeat('1',64),repeat('2',64),600
+        );
+        token := (lease->>'lease_token')::uuid;
+        perform public.mls_complete_source_map_work(
+            'source-map:synthetic:b1',token,'drive:artifact',repeat('3',64)
+        );
+        failed := false;
+        begin
+            perform public.mls_claim_source_map_work(
+                'source-map:synthetic:b1',book,'B1','worker-c',
+                repeat('1',64),repeat('2',64),600
+            );
+        exception when others then failed := true; end;
+        if not failed then raise exception 'completed work key was rerun'; end if;
+    end;
 end;
 $test$;
