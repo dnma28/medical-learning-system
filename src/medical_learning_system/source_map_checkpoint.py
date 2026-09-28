@@ -43,10 +43,20 @@ def parse_checkpoint_block(text: str) -> SourceMapCheckpoint | None:
     return SourceMapCheckpoint.model_validate_json(match.group(1))
 
 
-def latest_checkpoint(comments: Iterable[str]) -> SourceMapCheckpoint | None:
+def latest_checkpoint(
+    comments: Iterable[str],
+    *,
+    work_key: str | None = None,
+    batch_id: str | None = None,
+) -> SourceMapCheckpoint | None:
     materialized = list(comments)
     for comment in reversed(materialized):
         checkpoint = parse_checkpoint_block(comment)
-        if checkpoint is not None:
-            return checkpoint
+        if checkpoint is None:
+            continue
+        if work_key is not None and checkpoint.work_key != work_key:
+            continue
+        if batch_id is not None and checkpoint.batch_id != batch_id:
+            continue
+        return checkpoint
     return None
