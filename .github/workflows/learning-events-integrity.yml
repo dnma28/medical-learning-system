@@ -5,12 +5,14 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'tests/sql/learning_events_append_only_contract.sql'
+      - 'tests/sql/learner_runtime_projection_contract.sql'
       - '.github/workflows/learning-events-integrity.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
       - 'tests/sql/learning_events_append_only_contract.sql'
+      - 'tests/sql/learner_runtime_projection_contract.sql'
       - '.github/workflows/learning-events-integrity.yml'
 
 permissions:
@@ -47,9 +49,13 @@ jobs:
           SQL
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/0001_core_storage.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/0009_adaptive_learning_runtime.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/0011_source_aware_hoc90_events.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260927024500_fsrs_spaced_retrieval.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260928172534_learning_events_append_only.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260928200000_learner_runtime_projection_atomicity.sql
           # Replay must preserve the same guards without touching data.
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260928172534_learning_events_append_only.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/learning_events_append_only_contract.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/learner_runtime_projection_contract.sql
           test "$(psql -Atc 'select count(*) from public.mls_learning_events')" = 0
           test "$(psql -Atc 'select count(*) from public.mls_learning_sessions')" = 0
