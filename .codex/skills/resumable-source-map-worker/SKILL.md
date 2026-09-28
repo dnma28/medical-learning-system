@@ -13,6 +13,16 @@ Make every run safe to stop and safe to resume.
 
 An interrupted run must never require guessing what was completed, silently reuse stale evidence, widen scope, create duplicate canonical artifacts, or mutate runtime state outside the user's authorization.
 
+## Deterministic batch runner
+
+When the repository provides `mls-source-map-batch`, prefer it over chat-driven I/O for bounded review work:
+
+- `prepare` verifies/materializes the source, keys the PDF block cache by content SHA-256, locks the full original manifest row, and emits a compact review packet.
+- the model writes only decision fields; locked source fields are not part of the decision schema.
+- `validate` is the hard gate before any artifact publication. It enforces exact row order/set, locked-row hashes, point-locator policy, source-binding restrictions, and allowed dispositions.
+- with `ACCESS_GAP`/`SOURCE_GAP`, do not emit a canonical page or any VERIFIED state. Use candidate evidence only.
+
+Do not rebuild these checks ad hoc in chat when the runner can perform them deterministically.
 ## Mandatory bootstrap
 
 Before any source classification or artifact write:
