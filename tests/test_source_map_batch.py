@@ -284,3 +284,133 @@ def test_scoped_packet_requires_decision_binding_to_work_manifest_and_scope():
         ],
     )
     assert validate_decisions(packet, bound) == []
+
+
+
+def test_scoped_packet_keeps_full_reverse_coverage_blocks():
+    scope = _scope()
+    blocks = [
+        EvidenceBlock(
+            page=11, block_index=0, text="Omitted source parent",
+            bbox=(1, 1, 10, 10), font_sizes=[12.0], fonts=["Bold"],
+        ),
+        EvidenceBlock(
+            page=12, block_index=1, text="Hip Flexor Muscles",
+            bbox=(1, 20, 10, 30), font_sizes=[12.0], fonts=["Bold"],
+        ),
+        EvidenceBlock(
+            page=13, block_index=0, text="Boundary structural heading",
+            bbox=(1, 1, 10, 10), font_sizes=[10.0], fonts=["Bold"],
+        ),
+    ]
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=blocks,
+        scope=scope,
+        evidence_pages=[11, 12, 13],
+    )
+    assert [(block.page, block.block_index) for block in packet.scope_blocks] == [
+        (11, 0), (12, 1), (13, 0)
+    ]
+
+
+def test_classification_scope_validates_topology_and_augmentations():
+    scope = _scope().model_copy(update={"classification_required": True})
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=[],
+        scope=scope,
+    )
+    decisions = DecisionSet(
+        batch_id=packet.batch_id,
+        work_key=packet.work_key,
+        manifest_sha256=packet.manifest_sha256,
+        scope_sha256=packet.scope_sha256,
+        decisions=[
+            {
+                "node_id": "n1",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SECTION",
+            },
+            {
+                "node_id": "n2",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "n1",
+            },
+        ],
+        augmentations=[
+            {
+                "augmentation_observation_id": "aug-1",
+                "unit_value": 12,
+                "pdf_page": 13,
+                "physical_block_indices": [0],
+                "exact_source_text": "Exact missing child",
+                "bbox": [1, 1, 10, 10],
+                "source_id": packet.source.source_id,
+                "source_sha256": packet.source.content_sha256,
+                "source_observed": True,
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "n1",
+            }
+        ],
+    )
+    assert validate_decisions(packet, decisions) == []
+
+    broken = decisions.model_copy(deep=True)
+    broken.decisions[1].canonical_parent_observation_id = "missing"
+    assert any("missing parent" in error for error in validate_decisions(packet, broken))
+
+
+def test_classification_scope_rejects_out_of_scope_augmentation_and_cross_unit_parent():
+    scope = _scope().model_copy(update={"classification_required": True})
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=[],
+        scope=scope,
+    )
+    decisions = DecisionSet(
+        batch_id=packet.batch_id,
+        work_key=packet.work_key,
+        manifest_sha256=packet.manifest_sha256,
+        scope_sha256=packet.scope_sha256,
+        decisions=[
+            {
+                "node_id": "n1",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SECTION",
+            },
+            {
+                "node_id": "n2",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "aug-out",
+            },
+        ],
+        augmentations=[
+            {
+                "augmentation_observation_id": "aug-out",
+                "unit_value": 13,
+                "pdf_page": 13,
+                "physical_block_indices": [0],
+                "exact_source_text": "Wrong chapter",
+                "bbox": [1, 1, 10, 10],
+                "source_id": packet.source.source_id,
+                "source_sha256": packet.source.content_sha256,
+                "source_observed": True,
+                "final_classification": "REQUIRED_SECTION",
+            }
+        ],
+    )
+    errors = validate_decisions(packet, decisions)
+    assert any("outside authorized scope" in error for error in errors)
+    assert any("crosses scope unit" in error for error in errors)
