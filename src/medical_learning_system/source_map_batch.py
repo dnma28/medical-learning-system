@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from .sources import sha256_file
 
 
-SCHEMA_VERSION = "1.0.0"
-BLOCK_CACHE_VERSION = "blocks-v1"
+SCHEMA_VERSION = "1.1.0"
+BLOCK_CACHE_VERSION = "page-blocks-v1"
 _DEFAULT_HEADING_FIELDS = (
     "heading_expected_raw",
     "heading_expected_normalized",
@@ -66,6 +66,7 @@ class ReviewPacket(BaseModel):
     batch_id: str = Field(min_length=1)
     manifest_sha256: str = Field(min_length=64, max_length=64)
     source: SourceIdentity
+    evidence_pages: list[int] = Field(default_factory=list)
     point_locator_only: bool = True
     allowed_dispositions: list[str] = Field(default_factory=list)
     rows: list[ReviewPacketRow]
@@ -152,7 +153,7 @@ def _add_page(pages: list[int], value: Any) -> None:
         pages.append(value)
 
 
-def candidate_pages(row: dict[str, Any], *, limit: int = 8) -> list[int]:
+def candidate_pages(row: dict[str, Any]) -> list[int]:
     pages: list[int] = []
     for field in ("selected_pdf_page", "candidate_pdf_page", "canonical_pdf_page"):
         _add_page(pages, row.get(field))
@@ -170,7 +171,23 @@ def candidate_pages(row: dict[str, Any], *, limit: int = 8) -> list[int]:
             for item in split_pages:
                 if isinstance(item, dict):
                     _add_page(pages, item.get("pdf_page"))
-    return pages[:limit]
+    return pages
+
+
+def evidence_pages_for_rows(
+    rows: list[dict[str, Any]],
+    *,
+    neighbor_pages: int = 1,
+) -> list[int]:
+    if neighbor_pages < 0:
+        raise ValueError("neighbor_pages must be >= 0")
+
+    pages: set[int] = set()
+    for row in rows:
+        for page in candidate_pages(row):
+            start = max(1, page - neighbor_pages)
+            pages.update(range(start, page + neighbor_pages + 1))
+    return sorted(pages)
 
 
 def _best_evidence(
@@ -231,6 +248,7 @@ def build_review_packet(
     blocks: list[EvidenceBlock],
     point_locator_only: bool = True,
     allowed_dispositions: list[str] | None = None,
+    evidence_pages: list[int] | None = None,
 ) -> ReviewPacket:
     by_page: dict[int, list[EvidenceBlock]] = {}
     for block in blocks:
@@ -249,23 +267,54 @@ def build_review_packet(
         batch_id=batch_id,
         manifest_sha256=manifest_sha256,
         source=source,
+        evidence_pages=evidence_pages or sorted(by_page),
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions or [],
         rows=packet_rows,
     )
 
 
+def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
+    raw_page = page.get_text("dict", sort=True)
+    blocks: list[EvidenceBlock] = []
+    block_index = 0
+    for raw_block in raw_page.get("blocks", []):
+        if raw_block.get("type") != 0:
+            continue
+        lines = raw_block.get("lines") or []
+        spans = [span for line in lines for span in (line.get("spans") or [])]
+        text = "\n".join(
+            "".join(str(span.get("text") or "") for span in (line.get("spans") or []))
+            for line in lines
+        ).strip()
+        if not text:
+            continue
+        bbox = raw_block.get("bbox") or (0.0, 0.0, 0.0, 0.0)
+        blocks.append(
+            EvidenceBlock(
+                page=page_number,
+                block_index=block_index,
+                text=text,
+                bbox=tuple(float(value) for value in bbox),
+                font_sizes=sorted(
+                    {round(float(span.get("size") or 0.0), 3) for span in spans}
+                ),
+                fonts=sorted(
+                    {str(span.get("font")) for span in spans if span.get("font")}
+                ),
+            )
+        )
+        block_index += 1
+    return blocks
+
+
 def extract_pdf_blocks_cached(
     pdf_path: Path,
     cache_dir: Path,
+    *,
+    pages: list[int] | None = None,
 ) -> tuple[str, int, list[EvidenceBlock]]:
     digest = sha256_file(pdf_path)
-    cache_path = cache_dir / digest / f"{BLOCK_CACHE_VERSION}.json"
-    if cache_path.exists():
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
-        return digest, int(payload["page_count"]), [
-            EvidenceBlock.model_validate(item) for item in payload["blocks"]
-        ]
 
     try:
         import fitz
@@ -275,49 +324,59 @@ def extract_pdf_blocks_cached(
         ) from exc
 
     document = fitz.open(str(pdf_path))
-    blocks: list[EvidenceBlock] = []
-    global_index = 0
-    for page_index in range(len(document)):
-        page = document[page_index]
-        raw_page = page.get_text("dict", sort=True)
-        for raw_block in raw_page.get("blocks", []):
-            if raw_block.get("type") != 0:
-                continue
-            lines = raw_block.get("lines") or []
-            spans = [span for line in lines for span in (line.get("spans") or [])]
-            text = "\n".join(
-                "".join(str(span.get("text") or "") for span in (line.get("spans") or []))
-                for line in lines
-            ).strip()
-            if not text:
-                continue
-            bbox = raw_block.get("bbox") or (0.0, 0.0, 0.0, 0.0)
-            blocks.append(
-                EvidenceBlock(
-                    page=page_index + 1,
-                    block_index=global_index,
-                    text=text,
-                    bbox=tuple(float(value) for value in bbox),
-                    font_sizes=sorted(
-                        {round(float(span.get("size") or 0.0), 3) for span in spans}
-                    ),
-                    fonts=sorted(
-                        {str(span.get("font")) for span in spans if span.get("font")}
-                    ),
-                )
+    try:
+        page_count = len(document)
+        requested_pages = list(range(1, page_count + 1)) if pages is None else sorted(set(pages))
+        outside = [page for page in requested_pages if page < 1 or page > page_count]
+        if outside:
+            raise ValueError(
+                f"requested evidence pages are outside the PDF: {outside}; page_count={page_count}"
             )
-            global_index += 1
 
-    payload = {
-        "cache_version": BLOCK_CACHE_VERSION,
-        "content_sha256": digest,
-        "page_count": len(document),
-        "blocks": [block.model_dump(mode="json") for block in blocks],
-    }
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_bytes(canonical_json_bytes(payload))
-    return digest, len(document), blocks
+        source_cache = cache_dir / digest
+        pages_dir = source_cache / "pages"
+        pages_dir.mkdir(parents=True, exist_ok=True)
+        metadata = {
+            "cache_version": BLOCK_CACHE_VERSION,
+            "content_sha256": digest,
+            "size_bytes": pdf_path.stat().st_size,
+            "page_count": page_count,
+        }
+        (source_cache / "source.json").write_bytes(canonical_json_bytes(metadata))
 
+        blocks: list[EvidenceBlock] = []
+        for page_number in requested_pages:
+            page_cache = pages_dir / f"p{page_number:04d}.json"
+            if page_cache.exists():
+                payload = json.loads(page_cache.read_text(encoding="utf-8"))
+                if (
+                    payload.get("cache_version") != BLOCK_CACHE_VERSION
+                    or payload.get("content_sha256") != digest
+                    or payload.get("page") != page_number
+                ):
+                    page_cache.unlink()
+                    payload = None
+            else:
+                payload = None
+
+            if payload is None:
+                page_blocks = _extract_page_blocks(document[page_number - 1], page_number)
+                payload = {
+                    "cache_version": BLOCK_CACHE_VERSION,
+                    "content_sha256": digest,
+                    "page": page_number,
+                    "blocks": [block.model_dump(mode="json") for block in page_blocks],
+                }
+                page_cache.write_bytes(canonical_json_bytes(payload))
+            else:
+                page_blocks = [
+                    EvidenceBlock.model_validate(item) for item in payload.get("blocks", [])
+                ]
+            blocks.extend(page_blocks)
+
+        return digest, page_count, blocks
+    finally:
+        document.close()
 
 def prepare_from_pdf(
     *,
@@ -344,7 +403,12 @@ def prepare_from_pdf(
             f"source size mismatch: expected {expected_size}, got {pdf_path.stat().st_size}"
         )
 
-    digest, page_count, blocks = extract_pdf_blocks_cached(pdf_path, cache_dir)
+    evidence_pages = evidence_pages_for_rows(rows, neighbor_pages=1)
+    digest, page_count, blocks = extract_pdf_blocks_cached(
+        pdf_path,
+        cache_dir,
+        pages=evidence_pages,
+    )
     if expected_sha256 is not None and digest != expected_sha256:
         raise ValueError(
             f"source SHA-256 mismatch: expected {expected_sha256}, got {digest}"
@@ -367,6 +431,7 @@ def prepare_from_pdf(
         blocks=blocks,
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions,
+        evidence_pages=evidence_pages,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
