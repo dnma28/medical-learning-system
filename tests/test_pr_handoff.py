@@ -139,3 +139,13 @@ def test_model_review_requires_real_comment_exact_head_and_distinct_session():
     assert check([{**review, "body": review["body"].replace("PASS", "BLOCKED")}])
     assert check([{**review, "body": review["body"].replace("Findings: 0", "Findings: 1")}])
     assert check([{**review, "body": review["body"].replace("migration chain, source binding and exact CI contract", "thin")}])
+    later_blocked = {
+        **review,
+        "id": 44,
+        "submitted_at": "2026-09-29T00:02:00Z",
+        "body": review["body"].replace("Model-Review: PASS", "Model-Review: BLOCKED")
+        .replace("Unresolved-Blocking-Findings: 0", "Unresolved-Blocking-Findings: 1"),
+    }
+    assert any("superseded" in error for error in check([review, later_blocked]))
+    later_pass = {**review, "id": 45, "submitted_at": "2026-09-29T00:03:00Z"}
+    assert any("superseded" in error for error in check([review, later_pass]))
