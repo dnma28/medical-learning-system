@@ -2,12 +2,15 @@ import hashlib
 import json
 
 from medical_learning_system.source_map_batch import (
+    BatchScope,
     DecisionSet,
     EvidenceBlock,
     SourceIdentity,
     build_review_packet,
     evidence_pages_for_rows,
+    evidence_pages_for_scope,
     validate_decisions,
+    validate_manifest_scope,
 )
 
 
@@ -206,3 +209,244 @@ def test_out_of_range_candidate_page_fails_before_extraction():
     rows = [{"node_id": "n1", "selected_pdf_page": 21}]
     with pytest.raises(ValueError, match="candidate pages are outside"):
         evidence_pages_for_rows(rows, neighbor_pages=1, page_count=20)
+
+
+
+def _scope():
+    return BatchScope(
+        work_key="source-map:neumann-kinesiology:b12",
+        unit_field="chapter",
+        authorized_units=[12],
+        expected_counts={"12": 2},
+        expected_total=2,
+        pdf_page_start=11,
+        pdf_page_end=13,
+        reverse_coverage_required=True,
+    )
+
+
+def test_manifest_scope_rejects_scope_drift_and_wrong_population():
+    metadata = {"scope": _scope().model_dump(mode="json")}
+    assert validate_manifest_scope(metadata, _rows(), required=True) == _scope()
+
+    drifted = [*_rows(), {**_rows()[0], "node_id": "n3", "chapter": 13}]
+    import pytest
+    with pytest.raises(ValueError, match="outside authorized scope"):
+        validate_manifest_scope(metadata, drifted, required=True)
+
+
+def test_reverse_coverage_expands_to_full_physical_scope():
+    pages = evidence_pages_for_scope(
+        _rows(),
+        scope=_scope(),
+        neighbor_pages=1,
+        page_count=20,
+    )
+    assert pages == [11, 12, 13]
+
+
+def test_reverse_coverage_rejects_candidate_escape():
+    scope = _scope().model_copy(update={"pdf_page_start": 13, "pdf_page_end": 15})
+    import pytest
+    with pytest.raises(ValueError, match="candidate pages escape"):
+        evidence_pages_for_scope(_rows(), scope=scope, page_count=20)
+
+
+def test_scoped_packet_requires_decision_binding_to_work_manifest_and_scope():
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=[],
+        scope=_scope(),
+    )
+    unbound = DecisionSet(
+        batch_id="BATCH-12",
+        decisions=[
+            {"node_id": "n1", "disposition": "REVIEW_REQUIRED"},
+            {"node_id": "n2", "disposition": "REVIEW_REQUIRED"},
+        ],
+    )
+    errors = validate_decisions(packet, unbound)
+    assert any("work_key mismatch" in error for error in errors)
+    assert any("manifest_sha256" in error for error in errors)
+    assert any("scope_sha256" in error for error in errors)
+
+    bound = DecisionSet(
+        batch_id="BATCH-12",
+        work_key=packet.work_key,
+        manifest_sha256=packet.manifest_sha256,
+        scope_sha256=packet.scope_sha256,
+        decisions=[
+            {"node_id": "n1", "disposition": "REVIEW_REQUIRED"},
+            {"node_id": "n2", "disposition": "REVIEW_REQUIRED"},
+        ],
+    )
+    assert validate_decisions(packet, bound) == []
+
+
+
+def test_scoped_packet_keeps_full_reverse_coverage_blocks():
+    scope = _scope()
+    blocks = [
+        EvidenceBlock(
+            page=11, block_index=0, text="Omitted source parent",
+            bbox=(1, 1, 10, 10), font_sizes=[12.0], fonts=["Bold"],
+        ),
+        EvidenceBlock(
+            page=12, block_index=1, text="Hip Flexor Muscles",
+            bbox=(1, 20, 10, 30), font_sizes=[12.0], fonts=["Bold"],
+        ),
+        EvidenceBlock(
+            page=13, block_index=0, text="Boundary structural heading",
+            bbox=(1, 1, 10, 10), font_sizes=[10.0], fonts=["Bold"],
+        ),
+    ]
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=blocks,
+        scope=scope,
+        evidence_pages=[11, 12, 13],
+    )
+    assert [(block.page, block.block_index) for block in packet.scope_blocks] == [
+        (11, 0), (12, 1), (13, 0)
+    ]
+
+
+def test_classification_scope_validates_topology_and_augmentations():
+    scope = _scope().model_copy(update={"classification_required": True})
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=[
+            EvidenceBlock(
+                page=13,
+                block_index=0,
+                text="Exact missing child",
+                bbox=(1, 1, 10, 10),
+            )
+        ],
+        scope=scope,
+    )
+    decisions = DecisionSet(
+        batch_id=packet.batch_id,
+        work_key=packet.work_key,
+        manifest_sha256=packet.manifest_sha256,
+        scope_sha256=packet.scope_sha256,
+        scope_evidence_sha256=packet.scope_evidence_sha256,
+        decisions=[
+            {
+                "node_id": "n1",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SECTION",
+            },
+            {
+                "node_id": "n2",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "n1",
+            },
+        ],
+        augmentations=[
+            {
+                "augmentation_observation_id": "aug-1",
+                "unit_value": 12,
+                "pdf_page": 13,
+                "physical_block_indices": [0],
+                "exact_source_text": "Exact missing child",
+                "bbox": [1, 1, 10, 10],
+                "source_id": packet.source.source_id,
+                "source_sha256": packet.source.content_sha256,
+                "source_observed": True,
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "n1",
+            }
+        ],
+    )
+    assert validate_decisions(packet, decisions) == []
+
+    broken = decisions.model_copy(deep=True)
+    broken.decisions[1].canonical_parent_observation_id = "missing"
+    assert any("missing parent" in error for error in validate_decisions(packet, broken))
+
+    wrong_text = decisions.model_copy(deep=True)
+    wrong_text.augmentations[0].exact_source_text = "asserted text absent from PDF packet"
+    assert any(
+        "exact_source_text does not match" in error
+        for error in validate_decisions(packet, wrong_text)
+    )
+
+    wrong_bbox = decisions.model_copy(deep=True)
+    wrong_bbox.augmentations[0].bbox = (2, 2, 11, 11)
+    assert any(
+        "bbox does not match" in error
+        for error in validate_decisions(packet, wrong_bbox)
+    )
+
+    tampered_packet = packet.model_copy(deep=True)
+    tampered_packet.scope_blocks[0].text = "Changed after packet creation"
+    assert any(
+        "packet scope evidence digest mismatch" in error
+        for error in validate_decisions(tampered_packet, decisions)
+    )
+
+    missing_block_packet = packet.model_copy(deep=True)
+    missing_block_packet.scope_blocks = []
+    assert any(
+        "physical source block is missing" in error
+        for error in validate_decisions(missing_block_packet, decisions)
+    )
+
+
+def test_classification_scope_rejects_out_of_scope_augmentation_and_cross_unit_parent():
+    scope = _scope().model_copy(update={"classification_required": True})
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=[],
+        scope=scope,
+    )
+    decisions = DecisionSet(
+        batch_id=packet.batch_id,
+        work_key=packet.work_key,
+        manifest_sha256=packet.manifest_sha256,
+        scope_sha256=packet.scope_sha256,
+        decisions=[
+            {
+                "node_id": "n1",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SECTION",
+            },
+            {
+                "node_id": "n2",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "aug-out",
+            },
+        ],
+        augmentations=[
+            {
+                "augmentation_observation_id": "aug-out",
+                "unit_value": 13,
+                "pdf_page": 13,
+                "physical_block_indices": [0],
+                "exact_source_text": "Wrong chapter",
+                "bbox": [1, 1, 10, 10],
+                "source_id": packet.source.source_id,
+                "source_sha256": packet.source.content_sha256,
+                "source_observed": True,
+                "final_classification": "REQUIRED_SECTION",
+            }
+        ],
+    )
+    errors = validate_decisions(packet, decisions)
+    assert any("outside authorized scope" in error for error in errors)
+    assert any("crosses scope unit" in error for error in errors)

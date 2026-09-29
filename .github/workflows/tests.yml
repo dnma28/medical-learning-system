@@ -16,6 +16,28 @@ jobs:
         run: pip install -e '.[dev,fsrs]'
       - name: Run tests
         run: pytest -q
+  postgres-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Start isolated Supabase database
+        run: npx --yes supabase@2.117.0 start
+      - name: Apply complete local migration chain
+        run: npx --yes supabase@2.117.0 db reset --local
+      - name: Run Source Map promotion contract twice with rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run in 1 2; do
+            { printf 'BEGIN;\n'; cat tests/sql/source_map_promotion_contract.sql; printf '\nROLLBACK;\n'; } \
+              | psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+                  -v ON_ERROR_STOP=1
+          done
   optional-tool-smoke:
     runs-on: ubuntu-latest
     steps:

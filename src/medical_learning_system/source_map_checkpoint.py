@@ -26,6 +26,38 @@ class SourceMapCheckpoint(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
+
+_CHECKPOINT_RANK = {
+    "INPUT_FROZEN": 0,
+    "SOURCE_READY": 1,
+    "ARTIFACT_VERIFIED": 2,
+    "VALIDATED": 3,
+    "INDEPENDENT_REVIEW_PASS": 4,
+    "READY_FOR_NEXT_ACTION": 5,
+}
+
+
+def validate_checkpoint_transition(
+    previous: SourceMapCheckpoint | None,
+    current: SourceMapCheckpoint,
+) -> list[str]:
+    errors: list[str] = []
+    if previous is None:
+        if current.status not in {"INPUT_FROZEN", "BLOCKED"}:
+            errors.append("first checkpoint must be INPUT_FROZEN or BLOCKED")
+        return errors
+
+    for field in ("work_key", "book_id", "batch_id"):
+        if getattr(previous, field) != getattr(current, field):
+            errors.append(f"checkpoint {field} changed across one work stream")
+
+    if previous.status != "BLOCKED" and current.status != "BLOCKED":
+        if _CHECKPOINT_RANK.get(current.status, -1) < _CHECKPOINT_RANK.get(previous.status, -1):
+            errors.append(
+                f"checkpoint status regressed from {previous.status} to {current.status}"
+            )
+    return errors
+
 def render_checkpoint_block(checkpoint: SourceMapCheckpoint) -> str:
     payload = json.dumps(
         checkpoint.model_dump(mode="json"),
@@ -43,10 +75,20 @@ def parse_checkpoint_block(text: str) -> SourceMapCheckpoint | None:
     return SourceMapCheckpoint.model_validate_json(match.group(1))
 
 
-def latest_checkpoint(comments: Iterable[str]) -> SourceMapCheckpoint | None:
+def latest_checkpoint(
+    comments: Iterable[str],
+    *,
+    work_key: str | None = None,
+    batch_id: str | None = None,
+) -> SourceMapCheckpoint | None:
     materialized = list(comments)
     for comment in reversed(materialized):
         checkpoint = parse_checkpoint_block(comment)
-        if checkpoint is not None:
-            return checkpoint
+        if checkpoint is None:
+            continue
+        if work_key is not None and checkpoint.work_key != work_key:
+            continue
+        if batch_id is not None and checkpoint.batch_id != batch_id:
+            continue
+        return checkpoint
     return None

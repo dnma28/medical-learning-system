@@ -26,6 +26,13 @@ ChatGPT / HỌC90
 Keep these authorities separate:
 
 - original textbook bytes are the source-material authority;
+- `mls_sources.status` is the legacy physical-parser lifecycle
+  (`new/parsed/indexed/graphed/compiled/stale/error`), **not** Source Map
+  verification/readiness; current registry rows may legitimately remain `new`;
+- `mls_logical_sources.source_map_state` is historical catalog metadata, not runtime
+  readiness authority; use `mls_source_map_readiness(...)`;
+- `identity_status` is separate again: new Source Map certification must fail closed
+  unless the logical identity is explicitly `verified`;
 - certified/promoted Source Maps are the source-structure authority;
 - Canonical Medical KG is not learner state and must not be auto-written by extraction;
 - Student Model, Error Graph, Skill Tree, HỌC90 sessions, and append-only LearningEvents
@@ -35,14 +42,13 @@ Keep these authorities separate:
 
 ## Live checkpoint
 
-Verified from live Supabase on 2026-09-27:
+Verified from live Supabase on 2026-09-28:
 
 - 16 logical books;
-- 57 registered physical sources;
-- 9 Source Map staging rows;
-- 3 Source Map certificates;
-- 2,512 promoted runtime Source Map nodes;
-- Costanzo, Kandel, and Magee are `ready_for_hoc90=true`, runtime version 1;
+- **6/16 promoted books** are `ready_for_hoc90=true`: Costanzo, Kandel, Magee,
+  Stryer, Bates, and Ganong;
+- Guyton/Hall remains unpromoted with zero staging/certificate/runtime rows while
+  bounded deeper-hierarchy reconciliation continues;
 - one active HỌC90 blueprint and one paused pilot session exist;
 - one system `source_retrieval` LearningEvent exists;
 - ConceptMastery rows = 0, learner-error rows = 0, SkillState rows = 0.
@@ -52,20 +58,24 @@ performance.
 
 ### Source Map routing checkpoint
 
-Current serial evidence routing, subject to fresh issue/live readback:
+Current serial routing, subject to fresh issue/live readback:
 
-- **Kisner #166** — current input-ready evidence target; exact single-file Drive source
-  is fingerprinted and raw-byte access is confirmed.
-- **Katzung #124** — audit tooling independently approved for use in #154, but book
-  closure is blocked by required Appendix 1–3 physical-source coverage. Denominator is
-  still NULL.
-- **Robbins #130** — parked at a registered-source corruption gap across the bounded
-  middle-body interval; do not retry unchanged parser routes.
-- **Neumann #125** — unresolved work has reduced to canonical Part 3/full-book
-  access/binding evidence; do not copy attachment hashes into the canonical registry.
-- **Junqueira #123** — Chapter 23 remains a source/page-object corruption gap.
-- **Stryer #129** — exact source/fingerprint and the finite destination-page exception
-  queue are preserved; resume from that queue when it becomes the serial target.
+- **Guyton/Hall #171 / #174** — current serial closure target. B1 Ch1–30 and
+  B2 Ch31–60 are closed; strict B3-A Ch61–65 has independent PASS. Continue only
+  in small machine-scoped batches with worker → independent reviewer gating.
+- **O'Sullivan #176, Moore #178, Yanoff/Duker #180** — review-ready queues waiting
+  behind the current serial target.
+- **Medical Biochemistry #181** — evidence/reconciliation incomplete; denominator NULL.
+- **Katzung #124** — blocked by required Appendix 1–3 physical-source coverage.
+- **Kisner** — registered source has an explicit corruption/integrity blocker; do not
+  infer missing structure.
+- **Robbins** — parked at registered-source corruption.
+- **Neumann** — canonical Part 3/full-book source binding remains unresolved.
+- **Junqueira** — registered source/page-object corruption remains unresolved.
+
+Durable Source Map mutable work requires an exact work key and, after the workflow
+stability migration is deployed, an atomic Supabase work lease. GitHub comments are
+audit records, not locks.
 
 Do not infer that an expired CLAIM makes a work item available. Search exact `Work key:`,
 read active PRs/comments, and reconcile the latest checkpoint first.

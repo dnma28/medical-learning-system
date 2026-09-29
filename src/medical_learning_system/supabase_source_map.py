@@ -57,13 +57,77 @@ class SupabaseSourceMapStore:
         )
 
     def stage_source_map(self, staged: StagingSourceMap) -> str:
-        """Insert one immutable draft version; unresolved nodes stay in staging."""
-        row = staged.model_dump(mode="json")
-        response = self.client.table(self.STAGING).insert(row).execute()
-        rows = _data(response)
-        if len(rows) != 1 or not rows[0].get("payload_sha256"):
-            raise RuntimeError("staging insert has no digest readback")
-        return str(rows[0]["payload_sha256"])
+        """Atomically allocate and insert one immutable draft version."""
+        payload = staged.model_dump(mode="json")
+        response = self.client.rpc("mls_stage_source_map", {
+            "p_logical_source_id": staged.logical_source_id,
+            "p_expected_latest_staging_version": staged.staging_version - 1,
+            "p_proposal": payload["proposal"],
+            "p_toc_denominator": payload["toc_denominator"],
+            "p_extraction_version": payload["extraction_version"],
+            "p_source_manifest": payload["source_manifest"],
+            "p_audit_metadata": payload["audit_metadata"],
+        }).execute()
+        result = response.data
+        if not isinstance(result, dict):
+            raise RuntimeError("staging RPC readback missing")
+        if result.get("staging_version") != staged.staging_version:
+            raise RuntimeError("staging version readback mismatch")
+        digest = result.get("payload_sha256")
+        if not isinstance(digest, str) or len(digest) != 64:
+            raise RuntimeError("staging digest readback missing")
+        return digest
+
+    def claim_source_map_work(
+        self, *, work_key: str, logical_source_id: str, batch_id: str,
+        owner_id: str, scope_sha256: str, manifest_sha256: str,
+        lease_seconds: int = 1800,
+    ) -> dict[str, Any]:
+        response = self.client.rpc("mls_claim_source_map_work", {
+            "p_work_key": work_key,
+            "p_logical_source_id": logical_source_id,
+            "p_batch_id": batch_id,
+            "p_owner_id": owner_id,
+            "p_scope_sha256": scope_sha256,
+            "p_manifest_sha256": manifest_sha256,
+            "p_lease_seconds": lease_seconds,
+        }).execute()
+        if not isinstance(response.data, dict) or response.data.get("status") != "active":
+            raise RuntimeError("Source Map work lease readback missing")
+        return dict(response.data)
+
+    def heartbeat_source_map_work(
+        self, *, work_key: str, lease_token: str, lease_seconds: int = 1800,
+    ) -> str:
+        response = self.client.rpc("mls_heartbeat_source_map_work", {
+            "p_work_key": work_key,
+            "p_lease_token": lease_token,
+            "p_lease_seconds": lease_seconds,
+        }).execute()
+        if not isinstance(response.data, str):
+            raise RuntimeError("Source Map work heartbeat readback missing")
+        return response.data
+
+    def complete_source_map_work(
+        self, *, work_key: str, lease_token: str,
+        artifact_ref: str, artifact_sha256: str,
+    ) -> None:
+        response = self.client.rpc("mls_complete_source_map_work", {
+            "p_work_key": work_key,
+            "p_lease_token": lease_token,
+            "p_artifact_ref": artifact_ref,
+            "p_artifact_sha256": artifact_sha256,
+        }).execute()
+        if response.data is not True:
+            raise RuntimeError("Source Map work completion readback mismatch")
+
+    def release_source_map_work(self, *, work_key: str, lease_token: str) -> None:
+        response = self.client.rpc("mls_release_source_map_work", {
+            "p_work_key": work_key,
+            "p_lease_token": lease_token,
+        }).execute()
+        if response.data is not True:
+            raise RuntimeError("Source Map work release readback mismatch")
 
     def certify_source_map(
         self, logical_source_id: str, staging_version: int, expected_staging_sha256: str
