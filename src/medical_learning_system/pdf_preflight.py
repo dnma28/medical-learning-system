@@ -29,6 +29,8 @@ def inspect_pdf(
         raise ValueError("min_text_chars must be nonnegative")
 
     with fitz.open(path) as pdf:
+        if not pdf.is_pdf:
+            raise ValueError("input is not a PDF")
         if pdf.needs_pass:
             raise ValueError("encrypted PDF needs a password")
         count = len(pdf)
