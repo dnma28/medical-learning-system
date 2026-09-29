@@ -1,10 +1,11 @@
 from pathlib import Path
+import sys
 
 import pytest
 
 fitz = pytest.importorskip("fitz")
 
-from medical_learning_system.pdf_preflight import inspect_pdf
+from medical_learning_system.pdf_preflight import inspect_pdf, main
 
 
 def _pdf(path: Path) -> None:
@@ -62,3 +63,17 @@ def test_non_pdf_bytes_with_pdf_suffix_are_rejected(tmp_path: Path):
     path.write_bytes(image.tobytes("png"))
     with pytest.raises(ValueError, match="not a PDF"):
         inspect_pdf(path)
+
+
+def test_cli_never_overwrites_source_even_via_alias(tmp_path: Path, monkeypatch):
+    path = tmp_path / "source.pdf"
+    _pdf(path)
+    original = path.read_bytes()
+    alias = tmp_path / "alias.json"
+    alias.symlink_to(path)
+    for output in (path, alias):
+        monkeypatch.setattr(sys, "argv", ["mls-pdf-preflight", str(path), "--output", str(output)])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+        assert path.read_bytes() == original
