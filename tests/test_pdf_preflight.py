@@ -54,3 +54,11 @@ def test_image_only_page_is_visual_check_not_native_evidence(tmp_path: Path):
     assert report["pages"][0]["native_text_chars"] == 0
     assert report["visual_check_pages"] == [1]
     assert report["status"] == "VISUAL_CHECK_REQUIRED"
+
+
+def test_non_pdf_bytes_with_pdf_suffix_are_rejected(tmp_path: Path):
+    image = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 40, 40), 0)
+    path = tmp_path / "renamed.pdf"
+    path.write_bytes(image.tobytes("png"))
+    with pytest.raises(ValueError, match="not a PDF"):
+        inspect_pdf(path)
