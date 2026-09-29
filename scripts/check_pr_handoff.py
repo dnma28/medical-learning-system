@@ -14,6 +14,7 @@ _REQUIRED = ("Issue", "Scope", "Verification", "Review")
 _SOURCE_GATED = ("source_map", "supabase/migrations/")
 _DOC_PREFIXES = ("docs/", ".github/ISSUE_TEMPLATE/")
 _REVIEW_STATUS = re.compile(r"(?im)^\s*Status:\s*(PASS|APPROVED)\s*$")
+_REVIEW_PENDING = re.compile(r"(?im)^\s*Status:\s*PENDING\s*$")
 _REVIEW_COMMIT = re.compile(r"(?im)^\s*Commit:\s*([0-9a-f]{40})\s*$")
 _REVIEW_EVIDENCE = re.compile(
     r"(?im)^\s*Evidence:\s*https://github\.com/[^\s]+"
@@ -21,7 +22,13 @@ _REVIEW_EVIDENCE = re.compile(
 )
 
 
-def validate(body: str, paths: list[str], head_sha: str | None = None) -> list[str]:
+def validate(
+    body: str,
+    paths: list[str],
+    head_sha: str | None = None,
+    *,
+    draft: bool = False,
+) -> list[str]:
     """Return handoff/review gate errors; documentation-only PRs have a lighter risk gate."""
     matches = list(_SECTION.finditer(body))
     sections = {
@@ -38,8 +45,11 @@ def validate(body: str, paths: list[str], head_sha: str | None = None) -> list[s
         errors.append("## Issue must reference a numbered GitHub issue")
     if filled("Review"):
         review = sections["Review"]
-        if not _REVIEW_STATUS.search(review):
-            errors.append("## Review requires a 'Status: PASS' or 'Status: APPROVED' line")
+        if draft:
+            if not _REVIEW_PENDING.search(review):
+                errors.append("Draft PRs must mark ## Review as 'Status: PENDING'")
+        elif not _REVIEW_STATUS.search(review):
+            errors.append("Ready PRs require ## Review 'Status: PASS' or 'Status: APPROVED'")
         commit = _REVIEW_COMMIT.search(review)
         if commit is None:
             errors.append("## Review requires 'Commit: <40-char head SHA>'")
@@ -47,8 +57,8 @@ def validate(body: str, paths: list[str], head_sha: str | None = None) -> list[s
             errors.append(
                 f"## Review is stale: reviewed {commit.group(1)}, current head is {head_sha}"
             )
-        if not _REVIEW_EVIDENCE.search(review):
-            errors.append("## Review requires a GitHub issue-comment or PR-review evidence URL")
+        if not draft and not _REVIEW_EVIDENCE.search(review):
+            errors.append("Ready PRs require a GitHub issue-comment or PR-review evidence URL")
     source_gated = any(
         marker in path.casefold() for path in paths for marker in _SOURCE_GATED
     )
@@ -88,14 +98,84 @@ def changed_paths(repository: str, number: int, token: str) -> list[str]:
     raise RuntimeError("PR exceeds 3,000 files; inspect scope manually")
 
 
+def validate_independent_reviews(
+    reviews: list[dict],
+    pull_request_author: str,
+    head_sha: str,
+) -> list[str]:
+    """Require the latest approval from a human reviewer other than the PR author."""
+    latest_by_user: dict[str, dict] = {}
+    for review in reviews:
+        user = review.get("user") or {}
+        login = user.get("login")
+        if not login:
+            continue
+        previous = latest_by_user.get(login)
+        if previous is None or (review.get("submitted_at") or "") >= (
+            previous.get("submitted_at") or ""
+        ):
+            latest_by_user[login] = review
+
+    for login, review in latest_by_user.items():
+        user = review.get("user") or {}
+        if (
+            login != pull_request_author
+            and user.get("type") != "Bot"
+            and review.get("state") == "APPROVED"
+            and review.get("commit_id") == head_sha
+        ):
+            return []
+    return [
+        "Ready PR requires an APPROVED review by a non-author human "
+        "on the exact current head SHA"
+    ]
+
+
+def pull_request_reviews(repository: str, number: int, token: str) -> list[dict]:
+    reviews: list[dict] = []
+    for page in range(1, 32):
+        url = (
+            f"https://api.github.com/repos/{repository}/pulls/{number}/reviews"
+            f"?per_page=100&page={page}"
+        )
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            batch = json.load(response)
+        reviews.extend(batch)
+        if len(batch) < 100:
+            return reviews
+    raise RuntimeError("PR exceeds 3,100 reviews; inspect review history manually")
+
+
 def main() -> int:
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
     pr = event["pull_request"]
+    repository = os.environ["GITHUB_REPOSITORY"]
+    token = os.environ["GH_TOKEN"]
+    head_sha = pr["head"]["sha"]
+    paths = changed_paths(repository, pr["number"], token)
     errors = validate(
         pr.get("body") or "",
-        changed_paths(os.environ["GITHUB_REPOSITORY"], pr["number"], os.environ["GH_TOKEN"]),
-        pr["head"]["sha"],
+        paths,
+        head_sha,
+        draft=bool(pr.get("draft")),
     )
+    if not pr.get("draft"):
+        reviews = pull_request_reviews(repository, pr["number"], token)
+        errors.extend(
+            validate_independent_reviews(
+                reviews,
+                (pr.get("user") or {}).get("login", ""),
+                head_sha,
+            )
+        )
     for error in errors:
         print(f"::error::{error}")
     return 1 if errors else 0
