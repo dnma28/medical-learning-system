@@ -1,6 +1,8 @@
 import hashlib
 import json
 
+import pytest
+
 from medical_learning_system.source_map_batch import (
     BatchScope,
     DecisionSet,
@@ -11,6 +13,7 @@ from medical_learning_system.source_map_batch import (
     evidence_pages_for_scope,
     validate_decisions,
     validate_manifest_scope,
+    _extract_page_blocks,
 )
 
 
@@ -91,6 +94,81 @@ def test_review_packet_preserves_entire_locked_row_and_hashes_it():
     assert packet.rows[0].locked_sha256 == hashlib.sha256(serialized).hexdigest()
     assert packet.rows[0].evidence.best_match_text == "Hip Flexor Muscles"
     assert packet.rows[0].evidence.best_match_ratio == 1.0
+
+
+def test_pdf_block_extraction_preserves_span_identity_and_bbox():
+    class Page:
+        def get_text(self, kind):
+            assert kind == "dict"
+            return {
+                "blocks": [
+                    {"type": 1, "bbox": [0, 0, 1, 1]},
+                    {
+                        "type": 0,
+                        "bbox": [1, 2, 30, 20],
+                        "lines": [
+                            {
+                                "spans": [
+                                    {
+                                        "text": "Heading",
+                                        "bbox": [1, 2, 15, 10],
+                                        "font": "Times-Bold",
+                                        "size": 9.0,
+                                        "flags": 20,
+                                    }
+                                ]
+                            },
+                            {
+                                "spans": [
+                                    {
+                                        "text": "Body",
+                                        "bbox": [1, 12, 20, 20],
+                                        "font": "Times-Roman",
+                                        "size": 9.0,
+                                        "flags": 4,
+                                    }
+                                ]
+                            },
+                        ],
+                    }
+                ]
+            }
+
+    block = _extract_page_blocks(Page(), 13)[0]
+    assert block.block_index == 1
+    assert block.text == "Heading\nBody"
+    assert [(span.line_index, span.span_index, span.text) for span in block.spans] == [
+        (0, 0, "Heading"),
+        (1, 1, "Body"),
+    ]
+    assert block.spans[0].bbox == (1, 2, 15, 10)
+    assert block.spans[0].font == "Times-Bold"
+
+
+def test_evidence_block_rejects_span_indices_that_do_not_match_source_order():
+    with pytest.raises(ValueError, match="match their position"):
+        EvidenceBlock(
+            page=13,
+            block_index=1,
+            text="Heading\nBody",
+            bbox=(1, 2, 20, 20),
+            spans=[
+                {"line_index": 0, "span_index": 1, "text": "Heading", "bbox": (1, 2, 15, 10)},
+                {"line_index": 1, "span_index": 1, "text": "Body", "bbox": (1, 12, 20, 20)},
+            ],
+        )
+
+    with pytest.raises(ValueError, match="line indices must be in source order"):
+        EvidenceBlock(
+            page=13,
+            block_index=1,
+            text="Heading\nBody",
+            bbox=(1, 2, 20, 20),
+            spans=[
+                {"line_index": 1, "span_index": 0, "text": "Heading", "bbox": (1, 2, 15, 10)},
+                {"line_index": 0, "span_index": 1, "text": "Body", "bbox": (1, 12, 20, 20)},
+            ],
+        )
 
 
 def test_validate_requires_exact_row_order_and_completeness():
@@ -401,6 +479,135 @@ def test_classification_scope_validates_topology_and_augmentations():
     assert any(
         "physical source block is missing" in error
         for error in validate_decisions(missing_block_packet, decisions)
+    )
+
+
+def test_mixed_block_augmentation_is_bound_to_exact_source_spans():
+    scope = _scope().model_copy(update={"classification_required": True})
+    packet = build_review_packet(
+        batch_id="BATCH-12",
+        manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
+        rows=_rows(),
+        source=_source(),
+        blocks=[
+            EvidenceBlock(
+                page=13,
+                block_index=0,
+                text="Exact missing child\nBody text continues here.\nLater line.",
+                bbox=(1, 1, 20, 30),
+                spans=[
+                    {
+                        "line_index": 0,
+                        "span_index": 0,
+                        "text": "Exact missing child",
+                        "bbox": [1, 1, 15, 10],
+                        "font": "Times-Bold",
+                        "size": 9,
+                        "flags": 20,
+                    },
+                    {
+                        "line_index": 1,
+                        "span_index": 1,
+                        "text": "Body text continues here.",
+                        "bbox": [1, 12, 20, 20],
+                        "font": "Times-Roman",
+                        "size": 9,
+                        "flags": 4,
+                    },
+                    {
+                        "line_index": 2,
+                        "span_index": 2,
+                        "text": "Later line.",
+                        "bbox": [1, 22, 10, 30],
+                        "font": "Times-Roman",
+                        "size": 9,
+                        "flags": 4,
+                    },
+                ],
+            )
+        ],
+        scope=scope,
+    )
+    decisions = DecisionSet(
+        batch_id=packet.batch_id,
+        work_key=packet.work_key,
+        manifest_sha256=packet.manifest_sha256,
+        scope_sha256=packet.scope_sha256,
+        scope_evidence_sha256=packet.scope_evidence_sha256,
+        decisions=[
+            {
+                "node_id": "n1",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SECTION",
+            },
+            {
+                "node_id": "n2",
+                "resolution_status": "VERIFIED",
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "n1",
+            },
+        ],
+        augmentations=[
+            {
+                "augmentation_observation_id": "aug-1",
+                "unit_value": 12,
+                "pdf_page": 13,
+                "physical_block_indices": [0],
+                "span_refs": [[0, 0]],
+                "exact_source_text": "Exact missing child",
+                "bbox": [1, 1, 15, 10],
+                "source_id": packet.source.source_id,
+                "source_sha256": packet.source.content_sha256,
+                "source_observed": True,
+                "final_classification": "REQUIRED_SUBSECTION",
+                "canonical_parent_observation_id": "n1",
+            }
+        ],
+    )
+    assert validate_decisions(packet, decisions) == []
+
+    wrong_span = decisions.model_copy(deep=True)
+    wrong_span.augmentations[0].span_refs = [(0, 9)]
+    assert any(
+        "source span is missing" in error
+        for error in validate_decisions(packet, wrong_span)
+    )
+
+    wrong_text = decisions.model_copy(deep=True)
+    wrong_text.augmentations[0].exact_source_text = "Unbound heading"
+    assert any(
+        "exact_source_text does not match packet spans" in error
+        for error in validate_decisions(packet, wrong_text)
+    )
+
+    wrong_bbox = decisions.model_copy(deep=True)
+    wrong_bbox.augmentations[0].bbox = (1, 1, 20, 20)
+    assert any(
+        "bbox does not match packet source blocks" in error
+        for error in validate_decisions(packet, wrong_bbox)
+    )
+
+    out_of_block = decisions.model_copy(deep=True)
+    out_of_block.augmentations[0].span_refs = [(1, 0)]
+    assert any(
+        "span reference is outside selected blocks" in error
+        for error in validate_decisions(packet, out_of_block)
+    )
+
+    non_contiguous = decisions.model_copy(deep=True)
+    non_contiguous.augmentations[0].span_refs = [(0, 0), (0, 2)]
+    non_contiguous.augmentations[0].exact_source_text = "Exact missing child Later line."
+    non_contiguous.augmentations[0].bbox = (1, 1, 15, 30)
+    assert any(
+        "not contiguous source spans" in error
+        for error in validate_decisions(packet, non_contiguous)
+    )
+
+    tampered_packet = packet.model_copy(deep=True)
+    tampered_packet.scope_blocks[0].spans[0].text = "Tampered heading"
+    assert any(
+        "packet scope evidence digest mismatch" in error
+        for error in validate_decisions(tampered_packet, decisions)
     )
 
 
