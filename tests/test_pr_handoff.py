@@ -79,32 +79,63 @@ def test_draft_can_remain_pending_without_fake_review_evidence():
     )
 
 
-def test_independent_review_must_approve_exact_head_and_not_be_author_or_bot():
+def test_human_approval_requires_real_url_and_current_head():
     head = "1" * 40
+    repo = "dnma28/medical-learning-system"
+    body = _COMPLETE.replace(
+        "https://github.com/dnma28/medical-learning-system/issues/186#issuecomment-123456",
+        "https://github.com/dnma28/medical-learning-system/pull/190#pullrequestreview-42",
+    )
+    review = {
+        "id": 42,
+        "user": {"login": "reviewer", "type": "User"},
+        "state": "APPROVED",
+        "commit_id": head,
+        "submitted_at": "2026-09-29T00:00:00Z",
+    }
+    check = lambda reviews, text=body: module.validate_independent_reviews(
+        reviews, "author", head, body=text, repository=repo, number=190
+    )
+    assert check([review]) == []
+    assert check([{**review, "commit_id": "2" * 40}])
+    assert check([{**review, "user": {"login": "author", "type": "User"}}])
+    assert check([{**review, "user": {"login": "bot", "type": "Bot"}}])
+    assert check([review], body.replace("review-42", "review-0"))
 
-    def review(login, state="APPROVED", commit=head, submitted="2026-09-29T00:00:00Z", kind="User"):
-        return {
-            "user": {"login": login, "type": kind},
-            "state": state,
-            "commit_id": commit,
-            "submitted_at": submitted,
-        }
 
-    assert module.validate_independent_reviews(
-        [review("reviewer")], "author", head
-    ) == []
-    assert module.validate_independent_reviews(
-        [review("author")], "author", head
+def test_model_review_requires_real_comment_exact_head_and_distinct_session():
+    head = "1" * 40
+    writer = "sol-implementation-20260929"
+    reviewer = "astra-review-20260929"
+    body = _COMPLETE.replace(
+        "https://github.com/dnma28/medical-learning-system/issues/186#issuecomment-123456",
+        "https://github.com/dnma28/medical-learning-system/pull/190#pullrequestreview-43",
+    ).replace("Status: PASS", f"Status: PASS\nMode: MODEL_INDEPENDENT\nWriter-Session: {writer}")
+    review = {
+        "id": 43,
+        "user": {"login": "author", "type": "User"},
+        "state": "COMMENTED",
+        "commit_id": head,
+        "submitted_at": "2026-09-29T00:01:00Z",
+        "body": (
+            "Model-Review: PASS\n"
+            f"Reviewed-Commit: {head}\n"
+            f"Writer-Session: {writer}\n"
+            f"Reviewer-Session: {reviewer}\n"
+            "Evidence-Checks: migration chain, source binding and exact CI contract\n"
+            "Unresolved-Blocking-Findings: 0\n"
+            "Summary: Independent model review found no blocking issue on this exact head.\n"
+        ),
+    }
+    check = lambda reviews, text=body: module.validate_independent_reviews(
+        reviews, "author", head, body=text,
+        repository="dnma28/medical-learning-system", number=190,
     )
-    assert module.validate_independent_reviews(
-        [review("reviewer", commit="2" * 40)], "author", head
-    )
-    assert module.validate_independent_reviews(
-        [review("reviewer", kind="Bot")], "author", head
-    )
-    assert module.validate_independent_reviews(
-        [review("reviewer"), review("reviewer", state="CHANGES_REQUESTED",
-                                    submitted="2026-09-29T00:01:00Z")],
-        "author",
-        head,
-    )
+    assert check([review]) == []
+    assert check([], body)
+    assert check([review], body.replace("review-43", "review-0"))
+    assert check([{**review, "commit_id": "2" * 40}])
+    assert check([{**review, "body": review["body"].replace(reviewer, writer)}])
+    assert check([{**review, "body": review["body"].replace("PASS", "BLOCKED")}])
+    assert check([{**review, "body": review["body"].replace("Findings: 0", "Findings: 1")}])
+    assert check([{**review, "body": review["body"].replace("migration chain, source binding and exact CI contract", "thin")}])
