@@ -13,11 +13,14 @@ Closes #<!-- issue number -->
 ## Review
 
 <!-- Keep Status: PENDING until an independent reviewer checks the exact current HEAD.
-After review, replace with PASS/APPROVED, the exact 40-char HEAD SHA, and the durable
-GitHub issue-comment or PR-review URL. Any new commit makes the review stale. -->
+After review, replace with PASS/APPROVED, exact 40-char HEAD SHA, and the actual
+PR-review URL. For model review add Mode: MODEL_INDEPENDENT and distinct writer/reviewer
+session labels. CI binds the linked review to exact HEAD; the coordinator checks the
+review session's independence. Any new commit makes the review stale. -->
 Status: PENDING
 Commit: <40-char HEAD SHA>
-Evidence: <GitHub #issuecomment-... or #pullrequestreview-... URL>
+Evidence: <GitHub #pullrequestreview-... URL>
+<!-- Model path only: Mode: MODEL_INDEPENDENT; Writer-Session: <stable session id> -->
 
 ## Risk and provenance
 
