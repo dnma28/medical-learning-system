@@ -324,7 +324,14 @@ def test_classification_scope_validates_topology_and_augmentations():
         manifest_sha256=hashlib.sha256(b"manifest").hexdigest(),
         rows=_rows(),
         source=_source(),
-        blocks=[],
+        blocks=[
+            EvidenceBlock(
+                page=13,
+                block_index=0,
+                text="Exact missing child",
+                bbox=(1, 1, 10, 10),
+            )
+        ],
         scope=scope,
     )
     decisions = DecisionSet(
@@ -332,6 +339,7 @@ def test_classification_scope_validates_topology_and_augmentations():
         work_key=packet.work_key,
         manifest_sha256=packet.manifest_sha256,
         scope_sha256=packet.scope_sha256,
+        scope_evidence_sha256=packet.scope_evidence_sha256,
         decisions=[
             {
                 "node_id": "n1",
@@ -366,6 +374,34 @@ def test_classification_scope_validates_topology_and_augmentations():
     broken = decisions.model_copy(deep=True)
     broken.decisions[1].canonical_parent_observation_id = "missing"
     assert any("missing parent" in error for error in validate_decisions(packet, broken))
+
+    wrong_text = decisions.model_copy(deep=True)
+    wrong_text.augmentations[0].exact_source_text = "asserted text absent from PDF packet"
+    assert any(
+        "exact_source_text does not match" in error
+        for error in validate_decisions(packet, wrong_text)
+    )
+
+    wrong_bbox = decisions.model_copy(deep=True)
+    wrong_bbox.augmentations[0].bbox = (2, 2, 11, 11)
+    assert any(
+        "bbox does not match" in error
+        for error in validate_decisions(packet, wrong_bbox)
+    )
+
+    tampered_packet = packet.model_copy(deep=True)
+    tampered_packet.scope_blocks[0].text = "Changed after packet creation"
+    assert any(
+        "packet scope evidence digest mismatch" in error
+        for error in validate_decisions(tampered_packet, decisions)
+    )
+
+    missing_block_packet = packet.model_copy(deep=True)
+    missing_block_packet.scope_blocks = []
+    assert any(
+        "physical source block is missing" in error
+        for error in validate_decisions(missing_block_packet, decisions)
+    )
 
 
 def test_classification_scope_rejects_out_of_scope_augmentation_and_cross_unit_parent():
