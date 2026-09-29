@@ -103,8 +103,16 @@ def validate_independent_reviews(
     reviews: list[dict],
     pull_request_author: str,
     head_sha: str,
+    *,
+    body: str = "",
+    repository: str = "",
+    number: int = 0,
 ) -> list[str]:
-    """Require the latest approval from a human reviewer other than the PR author."""
+    """Accept exact-HEAD non-author approval or an exact-HEAD model review artifact.
+
+    A model session is process-separated, not GitHub-identity-separated. The
+    coordinator must verify that the reviewer session actually ran independently.
+    """
     latest_by_user: dict[str, dict] = {}
     for review in reviews:
         user = review.get("user") or {}
@@ -117,19 +125,67 @@ def validate_independent_reviews(
         ):
             latest_by_user[login] = review
 
-    for login, review in latest_by_user.items():
-        user = review.get("user") or {}
-        if (
-            login != pull_request_author
-            and user.get("type") != "Bot"
-            and review.get("state") == "APPROVED"
-            and review.get("commit_id") == head_sha
-        ):
-            return []
-    return [
-        "Ready PR requires an APPROVED review by a non-author human "
-        "on the exact current head SHA"
-    ]
+    matches = list(_SECTION.finditer(body))
+    sections = {
+        match.group(1): body[
+            match.end(): matches[index + 1].start() if index + 1 < len(matches) else len(body)
+        ].strip()
+        for index, match in enumerate(matches)
+    }
+    section = sections.get("Review", "")
+    evidence = re.search(
+        r"(?im)^Evidence:\s*https://github\.com/"
+        + re.escape(repository)
+        + r"/pull/" + str(number) + r"#pullrequestreview-(\d+)\s*$",
+        section,
+    ) if repository and number else None
+    if not evidence:
+        return ["Review evidence must link to a real review on this PR"]
+
+    review_id = int(evidence.group(1))
+    matched = [review for review in reviews if review.get("id") == review_id]
+    if len(matched) != 1:
+        return ["Model review evidence URL does not resolve to a PR review"]
+    review = matched[0]
+    user = review.get("user") or {}
+    login = user.get("login")
+    if (
+        login and login != pull_request_author
+        and user.get("type") != "Bot"
+        and review.get("state") == "APPROVED"
+        and review.get("commit_id") == head_sha
+        and latest_by_user.get(login) is review
+    ):
+        return []
+
+    mode = re.search(r"(?im)^Mode:\s*MODEL_INDEPENDENT\s*$", section)
+    writer = re.search(r"(?im)^Writer-Session:\s*([A-Za-z0-9._:/-]{8,128})\s*$", section)
+    if not (mode and writer):
+        return ["Ready PR requires exact-HEAD non-author approval or a bound model review"]
+    text = review.get("body") or ""
+
+    def field(name: str) -> str | None:
+        match = re.search(r"(?im)^" + re.escape(name) + r":[ \t]*([^\r\n]*?)[ \t]*$", text)
+        return match.group(1).strip() if match else None
+
+    reviewer_session = field("Reviewer-Session")
+    checks = field("Evidence-Checks")
+    summary = field("Summary")
+    if (
+        review.get("state") != "COMMENTED"
+        or review.get("commit_id") != head_sha
+        or field("Model-Review") != "PASS"
+        or field("Reviewed-Commit") != head_sha
+        or field("Writer-Session") != writer.group(1)
+        or not reviewer_session
+        or reviewer_session == writer.group(1)
+        or not re.fullmatch(r"[A-Za-z0-9._:/-]{8,128}", reviewer_session)
+        or not checks or len(checks) < 20
+        or field("Unresolved-Blocking-Findings") != "0"
+        or not summary or len(summary) < 30
+    ):
+        return ["Model review artifact lacks exact-HEAD PASS, distinct session, or evidence"]
+    return []
 
 
 def pull_request_reviews(repository: str, number: int, token: str) -> list[dict]:
@@ -175,6 +231,9 @@ def main() -> int:
                 reviews,
                 (pr.get("user") or {}).get("login", ""),
                 head_sha,
+                body=pr.get("body") or "",
+                repository=repository,
+                number=pr["number"],
             )
         )
     for error in errors:
