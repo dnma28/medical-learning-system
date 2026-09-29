@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -103,6 +104,7 @@ class ReviewPacket(BaseModel):
     work_key: str | None = None
     manifest_sha256: str = Field(min_length=64, max_length=64)
     scope_sha256: str | None = None
+    scope_evidence_sha256: str | None = None
     scope: BatchScope | None = None
     source: SourceIdentity
     evidence_pages: list[int] = Field(default_factory=list)
@@ -159,6 +161,7 @@ class DecisionSet(BaseModel):
     work_key: str | None = None
     manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     scope_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    scope_evidence_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     decisions: list[BatchDecision]
     augmentations: list[SourceAugmentation] = Field(default_factory=list)
 
@@ -174,6 +177,18 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 def canonical_sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _scope_evidence_sha256(
+    source: SourceIdentity,
+    scope: BatchScope,
+    blocks: list[EvidenceBlock],
+) -> str:
+    return canonical_sha256({
+        "source": source.model_dump(mode="json"),
+        "scope": scope.model_dump(mode="json"),
+        "blocks": [block.model_dump(mode="json") for block in blocks],
+    })
 
 
 def load_manifest_rows(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -415,19 +430,26 @@ def build_review_packet(
     scope_sha256 = (
         canonical_sha256(scope.model_dump(mode="json")) if scope is not None else None
     )
+    scope_blocks = (
+        sorted(blocks, key=lambda block: (block.page, block.block_index))
+        if scope is not None
+        else []
+    )
+    scope_evidence_sha256 = (
+        _scope_evidence_sha256(source, scope, scope_blocks)
+        if scope is not None
+        else None
+    )
     return ReviewPacket(
         batch_id=batch_id,
         work_key=scope.work_key if scope is not None else None,
         manifest_sha256=manifest_sha256,
         scope_sha256=scope_sha256,
+        scope_evidence_sha256=scope_evidence_sha256,
         scope=scope,
         source=source,
         evidence_pages=evidence_pages or sorted(by_page),
-        scope_blocks=(
-            sorted(blocks, key=lambda block: (block.page, block.block_index))
-            if scope is not None and scope.reverse_coverage_required
-            else []
-        ),
+        scope_blocks=scope_blocks,
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions or [],
         rows=packet_rows,
@@ -647,6 +669,16 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
             errors.append("decision manifest_sha256 does not match the locked packet")
         if decisions.scope_sha256 != packet.scope_sha256:
             errors.append("decision scope_sha256 does not match the locked packet")
+        expected_evidence_sha256 = _scope_evidence_sha256(
+            packet.source, packet.scope, packet.scope_blocks
+        )
+        if packet.scope_evidence_sha256 != expected_evidence_sha256:
+            errors.append("packet scope evidence digest mismatch")
+        if (
+            decisions.augmentations
+            and decisions.scope_evidence_sha256 != packet.scope_evidence_sha256
+        ):
+            errors.append("augmentation decisions are not bound to packet scope evidence")
 
     packet_ids = [row.node_id for row in packet.rows]
     decision_ids = [decision.node_id for decision in decisions.decisions]
@@ -758,6 +790,45 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                 errors.append(
                     f"{augmentation_id}: augmentation must be source_observed=true"
                 )
+            if len(augmentation.physical_block_indices) != len(
+                set(augmentation.physical_block_indices)
+            ):
+                errors.append(f"{augmentation_id}: physical block indices contain duplicates")
+            block_by_key = {
+                (block.page, block.block_index): block
+                for block in packet.scope_blocks
+            }
+            if len(block_by_key) != len(packet.scope_blocks):
+                errors.append("packet scope evidence contains duplicate page/block identities")
+            selected_blocks = [
+                block_by_key.get((augmentation.pdf_page, block_index))
+                for block_index in augmentation.physical_block_indices
+            ]
+            if any(block is None for block in selected_blocks):
+                errors.append(
+                    f"{augmentation_id}: physical source block is missing from packet evidence"
+                )
+            else:
+                observed_text = "\\n".join(
+                    block.text for block in selected_blocks if block is not None
+                )
+                if observed_text != augmentation.exact_source_text:
+                    errors.append(
+                        f"{augmentation_id}: exact_source_text does not match packet blocks"
+                    )
+                observed_bbox = (
+                    min(block.bbox[0] for block in selected_blocks if block is not None),
+                    min(block.bbox[1] for block in selected_blocks if block is not None),
+                    max(block.bbox[2] for block in selected_blocks if block is not None),
+                    max(block.bbox[3] for block in selected_blocks if block is not None),
+                )
+                if not all(
+                    math.isclose(actual, expected, abs_tol=0.01)
+                    for actual, expected in zip(augmentation.bbox, observed_bbox)
+                ):
+                    errors.append(
+                        f"{augmentation_id}: bbox does not match packet source blocks"
+                    )
             if augmentation.page_end is not None:
                 errors.append(f"{augmentation_id}: augmentation page_end must be null")
             if augmentation.final_classification not in required_classes:
