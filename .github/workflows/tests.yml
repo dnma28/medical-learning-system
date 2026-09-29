@@ -34,8 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           for run in 1 2; do
-            { printf 'BEGIN;\\n'; cat tests/sql/source_map_promotion_contract.sql; printf '\\nROLLBACK;\\n'; } \\
-              | psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \\
+            { printf 'BEGIN;\n'; cat tests/sql/source_map_promotion_contract.sql; printf '\nROLLBACK;\n'; } \
+              | psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
                   -v ON_ERROR_STOP=1
           done
   optional-tool-smoke:
