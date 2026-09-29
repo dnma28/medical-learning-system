@@ -79,6 +79,10 @@ def main() -> None:
     parser.add_argument("--expected-sha256")
     parser.add_argument("--expected-size", type=int)
     args = parser.parse_args()
+    if args.output.resolve() == args.pdf.resolve() or (
+        args.output.exists() and args.pdf.exists() and args.output.samefile(args.pdf)
+    ):
+        parser.error("output must differ from the source PDF")
     report = inspect_pdf(
         args.pdf,
         start_page=args.start_page,
