@@ -809,7 +809,7 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                     f"{augmentation_id}: physical source block is missing from packet evidence"
                 )
             else:
-                observed_text = "\\n".join(
+                observed_text = "\n".join(
                     block.text for block in selected_blocks if block is not None
                 )
                 if observed_text != augmentation.exact_source_text:
