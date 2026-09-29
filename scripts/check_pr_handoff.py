@@ -168,6 +168,18 @@ def validate_independent_reviews(
         match = re.search(r"(?im)^" + re.escape(name) + r":[ \t]*([^\r\n]*?)[ \t]*$", text)
         return match.group(1).strip() if match else None
 
+    model_reviews = [
+        item for item in reviews
+        if item.get("commit_id") == head_sha
+        and re.search(r"(?im)^Model-Review:[ \t]*(PASS|BLOCKED)[ \t]*$", item.get("body") or "")
+        and re.search(r"(?im)^Reviewed-Commit:[ \t]*" + re.escape(head_sha) + r"[ \t]*$", item.get("body") or "")
+    ]
+    if not model_reviews or max(
+        model_reviews,
+        key=lambda item: (item.get("submitted_at") or "", item.get("id") or 0),
+    ).get("id") != review_id:
+        return ["Model review evidence is superseded by a later review on this head"]
+
     reviewer_session = field("Reviewer-Session")
     checks = field("Evidence-Checks")
     summary = field("Summary")
