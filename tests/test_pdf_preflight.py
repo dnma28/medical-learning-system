@@ -41,3 +41,16 @@ def test_preflight_fails_closed_on_source_mismatch_or_invalid_range(tmp_path: Pa
         inspect_pdf(path, expected_size=1)
     with pytest.raises(ValueError, match="outside the source"):
         inspect_pdf(path, start_page=2, end_page=3)
+
+
+def test_image_only_page_is_visual_check_not_native_evidence(tmp_path: Path):
+    image = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 40, 40), 0)
+    path = tmp_path / "scan.pdf"
+    with fitz.open() as doc:
+        doc.new_page().insert_image(fitz.Rect(72, 72, 112, 112), pixmap=image)
+        doc.save(path)
+
+    report = inspect_pdf(path)
+    assert report["pages"][0]["native_text_chars"] == 0
+    assert report["visual_check_pages"] == [1]
+    assert report["status"] == "VISUAL_CHECK_REQUIRED"
