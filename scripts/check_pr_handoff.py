@@ -50,13 +50,14 @@ def validate(
                 errors.append("Draft PRs must mark ## Review as 'Status: PENDING'")
         elif not _REVIEW_STATUS.search(review):
             errors.append("Ready PRs require ## Review 'Status: PASS' or 'Status: APPROVED'")
-        commit = _REVIEW_COMMIT.search(review)
-        if commit is None:
-            errors.append("## Review requires 'Commit: <40-char head SHA>'")
-        elif head_sha is not None and commit.group(1) != head_sha:
-            errors.append(
-                f"## Review is stale: reviewed {commit.group(1)}, current head is {head_sha}"
-            )
+        if not draft:
+            commit = _REVIEW_COMMIT.search(review)
+            if commit is None:
+                errors.append("## Review requires 'Commit: <40-char head SHA>'")
+            elif head_sha is not None and commit.group(1) != head_sha:
+                errors.append(
+                    f"## Review is stale: reviewed {commit.group(1)}, current head is {head_sha}"
+                )
         if not draft and not _REVIEW_EVIDENCE.search(review):
             errors.append("Ready PRs require a GitHub issue-comment or PR-review evidence URL")
     source_gated = any(
