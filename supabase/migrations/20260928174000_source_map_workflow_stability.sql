@@ -315,7 +315,7 @@ create or replace function public.mls_certify_source_map(
 ) returns text
 language plpgsql
 set search_path = ''
-as $
+as $certify$
 declare
     s public.mls_source_map_staging%rowtype;
     v_identity_status text;
@@ -371,8 +371,7 @@ begin
 
     return v_certificate;
 end;
-$;
-
+$certify$;
 -- Runtime parity must cover every field that promotion materializes.
 create or replace function public.mls_runtime_matches_staging(
     p_logical_source_id text, p_staging_version bigint
