@@ -56,7 +56,7 @@ Candidate counts, bookmark counts and typography inventories are observations, n
 
 ## Roles
 
-Use at most one mutable evidence writer and one genuinely independent reviewer for the same book.
+Default to one Luna 6 mutable evidence writer and one Sol 6 genuinely independent reviewer/coordinator for the same frozen batch. Complete deterministic extraction and validation before model review; send Sol the exact immutable packet plus only the finite exceptions and source spans. A Sol code author on a separate issue needs a different independent review session.
 
 The evidence writer may extract, classify, repair the packet and create a new immutable staging version. That same session is not an independent reviewer of the version it materially authored.
 
