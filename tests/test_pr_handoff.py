@@ -67,3 +67,44 @@ def test_review_gate_rejects_pending_missing_evidence_and_stale_commit():
     assert any("stale" in error for error in module.validate(
         _COMPLETE, ["src/model.py"], "2" * 40
     ))
+
+
+
+def test_draft_can_remain_pending_without_fake_review_evidence():
+    pending = _COMPLETE.replace("Status: PASS", "Status: PENDING")
+    assert module.validate(pending, ["scripts/check_pr_handoff.py"], draft=True) == []
+    assert any(
+        "PENDING" in error
+        for error in module.validate(_COMPLETE, ["scripts/check_pr_handoff.py"], draft=True)
+    )
+
+
+def test_independent_review_must_approve_exact_head_and_not_be_author_or_bot():
+    head = "1" * 40
+
+    def review(login, state="APPROVED", commit=head, submitted="2026-09-29T00:00:00Z", kind="User"):
+        return {
+            "user": {"login": login, "type": kind},
+            "state": state,
+            "commit_id": commit,
+            "submitted_at": submitted,
+        }
+
+    assert module.validate_independent_reviews(
+        [review("reviewer")], "author", head
+    ) == []
+    assert module.validate_independent_reviews(
+        [review("author")], "author", head
+    )
+    assert module.validate_independent_reviews(
+        [review("reviewer", commit="2" * 40)], "author", head
+    )
+    assert module.validate_independent_reviews(
+        [review("reviewer", kind="Bot")], "author", head
+    )
+    assert module.validate_independent_reviews(
+        [review("reviewer"), review("reviewer", state="CHANGES_REQUESTED",
+                                    submitted="2026-09-29T00:01:00Z")],
+        "author",
+        head,
+    )
