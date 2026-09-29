@@ -32,7 +32,7 @@ For bounded review work:
 - for structural classification set `scope.classification_required=true`; the packet carries `scope_blocks` for the full authorized physical PDF interval so reverse coverage is not reduced to candidate-local windows.
 - the model writes only decision fields; locked source fields are not part of the decision schema.
 - missing publisher identities observed directly in the physical source belong in the decision set's first-class `augmentations` collection, not only in prose or an ad-hoc workbook side sheet.
-- `validate` is the hard gate before any artifact publication. It enforces exact row order/set, locked-row hashes, work/manifest/scope binding, point-locator policy, source-binding restrictions, allowed dispositions, augmentation scope/source binding, parent topology, cross-unit links, merge targets, and cycles.
+- `validate` is the hard gate before any artifact publication. It enforces exact row order/set, locked-row hashes, work/manifest/scope binding, point-locator policy, source-binding restrictions, allowed dispositions, augmentation scope/source binding, parent topology, cross-unit links, merge targets, and cycles. For an augmentation that is one heading within a mixed text block, bind the exact span IDs, span text, and span bounding box in the packet; selected spans must be contiguous in source order. Same-line spans concatenate directly; line groups join with one space in `exact_source_text`. Never substitute the enclosing paragraph as the heading identity.
 - with `ACCESS_GAP`/`SOURCE_GAP`, do not emit a canonical page or any VERIFIED state. Use candidate evidence only.
 
 Do not rebuild these checks ad hoc in chat when the runner can perform them deterministically.

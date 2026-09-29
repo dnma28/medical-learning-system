@@ -14,8 +14,8 @@ from .native_pdf_text import native_pdf_page_count
 from .sources import sha256_file
 
 
-SCHEMA_VERSION = "1.3.0"
-BLOCK_CACHE_VERSION = "page-blocks-v1"
+SCHEMA_VERSION = "1.4.0"
+BLOCK_CACHE_VERSION = "page-blocks-v2"
 _DEFAULT_HEADING_FIELDS = (
     "heading_expected_raw",
     "heading_expected_normalized",
@@ -37,6 +37,16 @@ class SourceIdentity(BaseModel):
     binding_state: str = Field(min_length=1)
 
 
+class EvidenceSpan(BaseModel):
+    line_index: int = Field(ge=0)
+    span_index: int = Field(ge=0)
+    text: str
+    bbox: tuple[float, float, float, float]
+    font: str | None = None
+    size: float | None = Field(default=None, ge=0.0)
+    flags: int | None = None
+
+
 class EvidenceBlock(BaseModel):
     page: int = Field(ge=1)
     block_index: int = Field(ge=0)
@@ -44,6 +54,7 @@ class EvidenceBlock(BaseModel):
     bbox: tuple[float, float, float, float]
     font_sizes: list[float] = Field(default_factory=list)
     fonts: list[str] = Field(default_factory=list)
+    spans: list[EvidenceSpan] = Field(default_factory=list)
 
 
 class RowEvidence(BaseModel):
@@ -142,6 +153,7 @@ class SourceAugmentation(BaseModel):
     unit_value: str | int
     pdf_page: int = Field(ge=1)
     physical_block_indices: list[int] = Field(min_length=1)
+    span_refs: list[tuple[int, int]] = Field(default_factory=list)
     exact_source_text: str = Field(min_length=1)
     extraction_raw_text: str | None = None
     font_span_evidence: dict[str, Any] = Field(default_factory=dict)
@@ -457,10 +469,10 @@ def build_review_packet(
 
 
 def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
-    raw_page = page.get_text("dict", sort=True)
+    raw_page = page.get_text("dict")
     blocks: list[EvidenceBlock] = []
-    block_index = 0
-    for raw_block in raw_page.get("blocks", []):
+    # Keep the PDF's original block index; Source Map locators use this physical identity.
+    for block_index, raw_block in enumerate(raw_page.get("blocks", [])):
         if raw_block.get("type") != 0:
             continue
         lines = raw_block.get("lines") or []
@@ -472,6 +484,26 @@ def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
         if not text:
             continue
         bbox = raw_block.get("bbox") or (0.0, 0.0, 0.0, 0.0)
+        evidence_spans: list[EvidenceSpan] = []
+        span_index = 0
+        for line_index, line in enumerate(lines):
+            for span in line.get("spans") or []:
+                evidence_spans.append(
+                    EvidenceSpan(
+                        line_index=line_index,
+                        span_index=span_index,
+                        text=str(span.get("text") or ""),
+                        bbox=tuple(float(value) for value in (span.get("bbox") or bbox)),
+                        font=str(span.get("font")) if span.get("font") else None,
+                        size=(
+                            float(span["size"])
+                            if span.get("size") is not None
+                            else None
+                        ),
+                        flags=int(span["flags"]) if span.get("flags") is not None else None,
+                    )
+                )
+                span_index += 1
         blocks.append(
             EvidenceBlock(
                 page=page_number,
@@ -484,9 +516,9 @@ def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
                 fonts=sorted(
                     {str(span.get("font")) for span in spans if span.get("font")}
                 ),
+                spans=evidence_spans,
             )
         )
-        block_index += 1
     return blocks
 
 
@@ -809,19 +841,96 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                     f"{augmentation_id}: physical source block is missing from packet evidence"
                 )
             else:
-                observed_text = "\n".join(
-                    block.text for block in selected_blocks if block is not None
-                )
-                if observed_text != augmentation.exact_source_text:
-                    errors.append(
-                        f"{augmentation_id}: exact_source_text does not match packet blocks"
+                if augmentation.span_refs:
+                    if len(augmentation.span_refs) != len(set(augmentation.span_refs)):
+                        errors.append(f"{augmentation_id}: span references contain duplicates")
+                    selected_block_ids = set(augmentation.physical_block_indices)
+                    refs = []
+                    for block_index, span_index in augmentation.span_refs:
+                        if block_index not in selected_block_ids:
+                            errors.append(
+                                f"{augmentation_id}: span reference is outside selected blocks"
+                            )
+                            continue
+                        block = block_by_key.get((augmentation.pdf_page, block_index))
+                        span = next(
+                            (
+                                item for item in (block.spans if block is not None else [])
+                                if item.span_index == span_index
+                            ),
+                            None,
+                        )
+                        if span is None:
+                            errors.append(
+                                f"{augmentation_id}: source span is missing from packet evidence"
+                            )
+                            continue
+                        refs.append((block_index, span))
+                    if len(refs) == len(augmentation.span_refs):
+                        order = [
+                            (block_index, span.line_index, span.span_index)
+                            for block_index, span in refs
+                        ]
+                        if order != sorted(order):
+                            errors.append(
+                                f"{augmentation_id}: span references are not in source order"
+                            )
+                        for (previous_block, previous_span), (block_index, span) in zip(
+                            refs, refs[1:]
+                        ):
+                            if block_index == previous_block:
+                                contiguous = span.span_index == previous_span.span_index + 1
+                            else:
+                                prior_block = block_by_key.get(
+                                    (augmentation.pdf_page, previous_block)
+                                )
+                                contiguous = (
+                                    block_index == previous_block + 1
+                                    and prior_block is not None
+                                    and previous_span.span_index == len(prior_block.spans) - 1
+                                    and span.span_index == 0
+                                )
+                            if not contiguous:
+                                errors.append(
+                                    f"{augmentation_id}: span references are not contiguous source spans"
+                                )
+                                break
+                        line_text: list[str] = []
+                        last_line: tuple[int, int] | None = None
+                        for block_index, span in refs:
+                            line = (block_index, span.line_index)
+                            if line != last_line:
+                                line_text.append(span.text)
+                                last_line = line
+                            else:
+                                line_text[-1] += span.text
+                        observed_text = " ".join(line_text)
+                        if observed_text != augmentation.exact_source_text:
+                            errors.append(
+                                f"{augmentation_id}: exact_source_text does not match packet spans"
+                            )
+                        observed_bbox = (
+                            min(span.bbox[0] for _, span in refs),
+                            min(span.bbox[1] for _, span in refs),
+                            max(span.bbox[2] for _, span in refs),
+                            max(span.bbox[3] for _, span in refs),
+                        )
+                    else:
+                        observed_bbox = augmentation.bbox
+                else:
+                    observed_text = "\n".join(
+                        block.text for block in selected_blocks if block is not None
                     )
-                observed_bbox = (
-                    min(block.bbox[0] for block in selected_blocks if block is not None),
-                    min(block.bbox[1] for block in selected_blocks if block is not None),
-                    max(block.bbox[2] for block in selected_blocks if block is not None),
-                    max(block.bbox[3] for block in selected_blocks if block is not None),
-                )
+                    if observed_text != augmentation.exact_source_text:
+                        errors.append(
+                            f"{augmentation_id}: exact_source_text does not match packet blocks"
+                        )
+                    observed_bbox = (
+                        min(block.bbox[0] for block in selected_blocks if block is not None),
+                        min(block.bbox[1] for block in selected_blocks if block is not None),
+                        max(block.bbox[2] for block in selected_blocks if block is not None),
+                        max(block.bbox[3] for block in selected_blocks if block is not None),
+                    )
                 if not all(
                     math.isclose(actual, expected, abs_tol=0.01)
                     for actual, expected in zip(augmentation.bbox, observed_bbox)
