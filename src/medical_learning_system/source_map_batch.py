@@ -56,6 +56,17 @@ class EvidenceBlock(BaseModel):
     fonts: list[str] = Field(default_factory=list)
     spans: list[EvidenceSpan] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def validate_span_sequence(self) -> EvidenceBlock:
+        if any(span.span_index != index for index, span in enumerate(self.spans)):
+            raise ValueError("span_index values must match their position in the block")
+        if any(
+            current.line_index < previous.line_index
+            for previous, current in zip(self.spans, self.spans[1:])
+        ):
+            raise ValueError("span line indices must be in source order")
+        return self
+
 
 class RowEvidence(BaseModel):
     candidate_pages: list[int] = Field(default_factory=list)
@@ -878,17 +889,46 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                         for (previous_block, previous_span), (block_index, span) in zip(
                             refs, refs[1:]
                         ):
+                            previous_block_evidence = block_by_key.get(
+                                (augmentation.pdf_page, previous_block)
+                            )
+                            current_block_evidence = block_by_key.get(
+                                (augmentation.pdf_page, block_index)
+                            )
+                            previous_position = next(
+                                (
+                                    index
+                                    for index, item in enumerate(
+                                        previous_block_evidence.spans
+                                        if previous_block_evidence is not None
+                                        else []
+                                    )
+                                    if item is previous_span
+                                ),
+                                None,
+                            )
+                            current_position = next(
+                                (
+                                    index
+                                    for index, item in enumerate(
+                                        current_block_evidence.spans
+                                        if current_block_evidence is not None
+                                        else []
+                                    )
+                                    if item is span
+                                ),
+                                None,
+                            )
                             if block_index == previous_block:
-                                contiguous = span.span_index == previous_span.span_index + 1
+                                contiguous = current_position == previous_position + 1
                             else:
-                                prior_block = block_by_key.get(
-                                    (augmentation.pdf_page, previous_block)
-                                )
                                 contiguous = (
                                     block_index == previous_block + 1
-                                    and prior_block is not None
-                                    and previous_span.span_index == len(prior_block.spans) - 1
-                                    and span.span_index == 0
+                                    and previous_block_evidence is not None
+                                    and current_block_evidence is not None
+                                    and previous_position
+                                    == len(previous_block_evidence.spans) - 1
+                                    and current_position == 0
                                 )
                             if not contiguous:
                                 errors.append(

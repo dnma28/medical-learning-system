@@ -1,6 +1,8 @@
 import hashlib
 import json
 
+import pytest
+
 from medical_learning_system.source_map_batch import (
     BatchScope,
     DecisionSet,
@@ -141,6 +143,32 @@ def test_pdf_block_extraction_preserves_span_identity_and_bbox():
     ]
     assert block.spans[0].bbox == (1, 2, 15, 10)
     assert block.spans[0].font == "Times-Bold"
+
+
+def test_evidence_block_rejects_span_indices_that_do_not_match_source_order():
+    with pytest.raises(ValueError, match="match their position"):
+        EvidenceBlock(
+            page=13,
+            block_index=1,
+            text="Heading\nBody",
+            bbox=(1, 2, 20, 20),
+            spans=[
+                {"line_index": 0, "span_index": 1, "text": "Heading", "bbox": (1, 2, 15, 10)},
+                {"line_index": 1, "span_index": 1, "text": "Body", "bbox": (1, 12, 20, 20)},
+            ],
+        )
+
+    with pytest.raises(ValueError, match="line indices must be in source order"):
+        EvidenceBlock(
+            page=13,
+            block_index=1,
+            text="Heading\nBody",
+            bbox=(1, 2, 20, 20),
+            spans=[
+                {"line_index": 1, "span_index": 0, "text": "Heading", "bbox": (1, 2, 15, 10)},
+                {"line_index": 0, "span_index": 1, "text": "Body", "bbox": (1, 12, 20, 20)},
+            ],
+        )
 
 
 def test_validate_requires_exact_row_order_and_completeness():
