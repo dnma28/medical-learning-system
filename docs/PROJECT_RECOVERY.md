@@ -1,7 +1,7 @@
 # Verified project recovery
 
-Start with retained issue #187, its latest checkpoint, current main and the exact
-work-key issue. The JSON snapshot is a dated, read-only projection, not another
+Start with current main, milestone #97, the retained per-book or code issue for the
+exact work key, and its latest verified checkpoint. The JSON snapshot is a dated, read-only projection, not another
 writable queue. GitHub issues own tasks, Supabase owns runtime, Drive textbook
 bytes own source evidence. Older chat/doc counts never authorize writes.
 
