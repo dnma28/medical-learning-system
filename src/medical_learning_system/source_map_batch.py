@@ -14,7 +14,7 @@ from .native_pdf_text import native_pdf_page_count
 from .sources import sha256_file
 
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 BLOCK_CACHE_VERSION = "page-blocks-v1"
 _DEFAULT_HEADING_FIELDS = (
     "heading_expected_raw",
