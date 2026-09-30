@@ -218,8 +218,10 @@ def test_review_required_migration_surfaces_review_required():
     assert raised.value.code == SourceContextErrorCode.REVIEW_REQUIRED
 
 
-def test_unmigrated_book_retains_exact_legacy_adapter():
+def test_unmigrated_unpromoted_book_retains_exact_legacy_adapter():
     tables = _base_tables()
+    tables["mls_logical_sources"][0]["promoted_staging_version"] = None
+    tables["mls_logical_sources"][0]["source_map_version"] = 0
     tables["mls_evidence_structure_links"] = [
         {
             "source_id": "costanzo-physical",
@@ -256,6 +258,35 @@ def test_unmigrated_book_retains_exact_legacy_adapter():
     result = SupabaseHoc90SourceContextResolver(Client(tables)).resolve(_ref())
 
     assert result.passages == ["first", "second"]
+
+
+def test_promoted_book_without_versioned_evidence_never_uses_legacy():
+    tables = _base_tables()
+    tables["mls_evidence_structure_links"] = [
+        {
+            "source_id": "costanzo-physical",
+            "node_id": "outline:0007",
+            "evidence_id": "legacy",
+            "confidence": 1.0,
+        }
+    ]
+    tables["mls_evidence_blocks"] = [
+        {
+            "evidence_id": "legacy",
+            "source_id": "costanzo-physical",
+            "page_index": 10,
+            "block_index": 1,
+            "content_type": "text",
+            "text": "must not be used for a promoted book",
+        }
+    ]
+
+    with pytest.raises(SourceContextUnavailable) as raised:
+        SupabaseHoc90SourceContextResolver(Client(tables)).resolve(_ref())
+
+    assert raised.value.code == SourceContextErrorCode.SOURCE_GAP
+    assert "promoted Source Map" in str(raised.value)
+    assert "Legacy fallback is disabled" in str(raised.value)
 
 
 def test_migrated_node_physical_source_affinity_is_checked():

@@ -110,8 +110,13 @@ book was migrated previously but Source Map advanced
   → never legacy fallback
 ```
 
-For a book that has **never** entered the bridge, the legacy exact-link/scalar adapter
-remains available during migration. It never widens by guessed page range.
+For a logical book with a **promoted Source Map**, absence of a current versioned
+evidence migration is always a fail-closed `SOURCE_GAP`; promoted routing never falls
+back to legacy structure evidence.
+
+The legacy exact-link/scalar adapter remains available only for genuinely
+**unpromoted / pre-Source-Map** compatibility paths. It never widens by guessed page
+range.
 
 ## RLS
 

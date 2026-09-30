@@ -107,12 +107,23 @@ class SupabaseHoc90SourceContextResolver:
                 source_id=source_id,
                 node_id=node_id,
             )
+        elif current_stage is not None:
+            # A promoted Source Map is authoritative enough that legacy structure
+            # evidence must never be reintroduced merely because this stage has
+            # not been compiled into the versioned evidence bridge yet.
+            raise SourceContextUnavailable(
+                "The current promoted Source Map has no active versioned evidence "
+                "migration. Compile exact current-stage evidence before HỌC90 use; "
+                "Legacy fallback is disabled for promoted books.",
+                code=SourceContextErrorCode.SOURCE_GAP,
+            )
         elif has_migration_history:
-            # A new Source Map promotion cannot silently re-enable legacy rows.
+            # Defensive compatibility: if a logical book ever entered the bridge,
+            # later metadata drift must not silently reactivate legacy evidence.
             raise SourceContextUnavailable(
                 "This logical book previously entered the promoted evidence bridge, "
-                "but the current Source Map version has no active evidence migration. "
-                "Legacy fallback is disabled.",
+                "but no active evidence migration is available. Legacy fallback is "
+                "disabled.",
                 code=SourceContextErrorCode.SOURCE_GAP,
             )
         else:
