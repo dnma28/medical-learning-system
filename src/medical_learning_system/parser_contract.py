@@ -38,10 +38,12 @@ class ParsedDocument(BaseModel):
     parser: str = Field(min_length=1)
     parser_version: str | None = None
     blocks: list[ParsedBlock]
+    # Disposition audit only: these raw blocks never enter evidence/alignment.
+    excluded_blocks: list[ParsedBlock] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def unique_block_indexes(self) -> "ParsedDocument":
-        indexes = [block.block_index for block in self.blocks]
+        indexes = [block.block_index for block in self.blocks + self.excluded_blocks]
         if len(indexes) != len(set(indexes)):
             raise ValueError("duplicate block_index")
         return self
