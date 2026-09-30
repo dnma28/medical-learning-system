@@ -12,7 +12,10 @@ Unit from bookmark depth.
 ## Boundaries
 
 - **Staging**: `mls_source_map_staging` stores one complete JSONB proposal per
-  logical book and staging version. A proposal node carries its source label,
+  logical book and staging version. New application staging writes use
+  `mls_stage_source_map(expected_latest_staging_version,...)`; the RPC locks the
+  logical-book row, allocates exactly one next version, and rejects stale/concurrent
+  writers. Direct service-role INSERT is not an application write path. A proposal node carries its source label,
   parent, kind, order/depth, optional physical source, locator kind
   (`unresolved`, `point`, `verified_range`), page/anchor, physical SHA-256,
   extraction SHA-256/version, status (`candidate`, `review_required`,
@@ -48,9 +51,12 @@ Unit from bookmark depth.
   separately assigned by curriculum decisions.
 - **Readiness**: `mls_source_map_readiness` returns computed
   `structural_state`, `audited_state`, version fields and
-  `historical_source_map_state`. READY requires a valid certificate for
-  the currently promoted staging version, matching runtime tree and physical
-  fingerprints. An older `section_anchored`, `deep_anchored` or
+  `historical_source_map_state`. Runtime READY is evaluated against the
+  **promoted immutable staging version**, not whichever WIP draft happens to be
+  newest. The response separately exposes the latest staging version/state and
+  whether a newer unpromoted draft exists. READY requires a valid certificate for
+  the promoted staging version, matching runtime tree (including
+  `learning_value` and `freshness_required`) and physical fingerprints. An older `section_anchored`, `deep_anchored` or
   `ready_for_hoc90` catalog label is reported only as historical metadata.
   `LogicalSourceMap.completeness()` remains fail-closed because it has no
   database certificate. Neither a heading point nor a publisher Contents/TOC
@@ -73,7 +79,8 @@ Unit from bookmark depth.
    remain in staging.
 
 The former `replace_source_map` API remains disabled. Use
-`stage_source_map` → `certify_source_map` →
-`promote_source_map(expected_version)` → `get_readiness` after migration
+`mls_stage_source_map(expected_latest_staging_version)` →
+`mls_certify_source_map` →
+`mls_promote_source_map(expected_version)` → `mls_source_map_readiness` after migration
 and pilot validation. Service-role-only grants and invoker functions do not
 authorize broad user-facing writes.

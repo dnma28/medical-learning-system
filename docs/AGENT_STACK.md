@@ -147,12 +147,12 @@ When you open a checkout of this repository in Codex, its project-scoped
 
 - `source_evidence_worker` — GPT-6 Luna, read-only textbook evidence review.
 - `implementation_engineer` — GPT-6 Sol, scoped code work.
-- `independent_reviewer` — GPT-6 Astra, read-only review.
+- `independent_reviewer` — GPT-6 Sol, read-only independent review.
 
-The project caps concurrent subagents at three. A profile's `sandbox_mode` is a default; Codex reapplies the parent session's active permission and sandbox choices when spawning children. Set the parent session to read-only before relying on read-only profiles. `workspace-write` is not a per-path allowlist, so keep the Sol agent's issue/path scope explicit and review its diff. Ask the coordinator to delegate separate issue scopes, then wait for the reviewer before merging. Example:
+The project permits up to three threads so a coordinator can run the default two-model pair (Luna 6 writer, Sol 6 reviewer). A profile's `sandbox_mode` is a default; Codex reapplies the parent session's active permission and sandbox choices when spawning children. Set the parent session to read-only before relying on read-only profiles. `workspace-write` is not a per-path allowlist, so keep the Sol agent's issue/path scope explicit and review its diff. Ask the coordinator to delegate separate issue scopes, then wait for the reviewer before merging. Example:
 
 ```text
-Use source_evidence_worker to inspect the assigned source batch, implementation_engineer to handle issue #N, and independent_reviewer to review the resulting diff. Keep their file scopes separate and wait for all results.
+Use source_evidence_worker (Luna 6) for the frozen Source Map batch. Then use independent_reviewer (Sol 6) to review its exact artifact and exceptions. On a separate code issue, implementation_engineer (Sol 6) may author a patch; a different session reviews that exact HEAD.
 ```
 
 These profiles are instructions and model selections, not bundled model weights.

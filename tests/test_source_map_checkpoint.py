@@ -3,6 +3,7 @@ from medical_learning_system.source_map_checkpoint import (
     latest_checkpoint,
     parse_checkpoint_block,
     render_checkpoint_block,
+    validate_checkpoint_transition,
 )
 
 
@@ -33,3 +34,49 @@ def test_latest_checkpoint_skips_non_checkpoint_comments():
     parsed = latest_checkpoint([older, "ordinary comment", newer])
     assert parsed is not None
     assert parsed.status == "VALIDATED"
+
+
+
+def test_latest_checkpoint_filters_exact_work_key_and_batch():
+    other = SourceMapCheckpoint(
+        work_key="source-map:other-book",
+        book_id="other-book",
+        batch_id="BATCH-OTHER",
+        status="VALIDATED",
+    )
+    target = _checkpoint("ARTIFACT_VERIFIED")
+    comments = [
+        render_checkpoint_block(target),
+        render_checkpoint_block(other),
+    ]
+    assert latest_checkpoint(
+        comments,
+        work_key=target.work_key,
+        batch_id=target.batch_id,
+    ) == target
+    assert latest_checkpoint(comments, work_key="missing") is None
+
+
+
+def test_checkpoint_transition_rejects_cross_work_and_regression():
+    first = _checkpoint("INPUT_FROZEN")
+    ready = _checkpoint("SOURCE_READY")
+    validated = _checkpoint("VALIDATED")
+    regressed = _checkpoint("SOURCE_READY")
+    other = SourceMapCheckpoint(
+        work_key="source-map:other",
+        book_id=first.book_id,
+        batch_id=first.batch_id,
+        status="VALIDATED",
+    )
+    assert validate_checkpoint_transition(None, first) == []
+    assert validate_checkpoint_transition(first, ready) == []
+    assert validate_checkpoint_transition(ready, validated) == []
+    assert any(
+        "regressed" in error
+        for error in validate_checkpoint_transition(validated, regressed)
+    )
+    assert any(
+        "work_key changed" in error
+        for error in validate_checkpoint_transition(validated, other)
+    )

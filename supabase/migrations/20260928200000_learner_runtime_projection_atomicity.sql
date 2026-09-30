@@ -57,6 +57,10 @@ as $$
 declare
     v_event public.mls_learning_events%rowtype;
     v_evidence_id text;
+    v_evidence_ids jsonb;
+    v_level_change boolean := false;
+    v_granted_level text := 'M0';
+    v_ceiling text;
 begin
     select * into v_event
     from public.mls_learning_events
@@ -73,7 +77,7 @@ begin
             raise exception 'mastery projection/event concept mismatch';
         end if;
 
-        if pg_catalog.jsonb_typeof(new.evidence_for_mastery) <> 'array' then
+        if pg_catalog.jsonb_typeof(new.evidence_for_mastery) is distinct from 'array' then
             raise exception 'evidence_for_mastery must be an array';
         end if;
 
@@ -95,27 +99,18 @@ begin
         -- Scheduling-only retrieval projections may update timing/counters without
         -- changing M0-M7. Any M-level change must explicitly cite the driving
         -- append-only event in evidence_for_mastery.
+        v_evidence_ids := new.evidence_for_mastery;
         if tg_op = 'INSERT' then
-            if new.mastery_level <> 'M0'
-               and not (new.evidence_for_mastery ? new.last_learning_event_id)
-            then
-                raise exception 'non-M0 mastery insert lacks event evidence';
+            v_granted_level := greatest(new.mastery_level, new.historical_peak_mastery);
+            v_level_change := v_granted_level <> 'M0';
+        else
+            v_level_change := new.mastery_level is distinct from old.mastery_level
+                or new.historical_peak_mastery is distinct from old.historical_peak_mastery;
+            if new.mastery_level > old.mastery_level then
+                v_granted_level := new.mastery_level;
             end if;
-        elsif new.mastery_level is distinct from old.mastery_level
-              or new.historical_peak_mastery is distinct from old.historical_peak_mastery
-        then
-            if not (new.evidence_for_mastery ? new.last_learning_event_id) then
-                raise exception 'mastery-level change lacks event evidence';
-            end if;
-            if v_event.event_type in (
-                'source_retrieval','source_gap','hint','checkpoint'
-            ) then
-                raise exception 'event type cannot grant mastery-level change';
-            end if;
-            if v_event.metadata->>'evidence_ceiling' = 'M1'
-               and new.mastery_level not in ('M0','M1')
-            then
-                raise exception 'recognition evidence exceeds M1 ceiling';
+            if new.historical_peak_mastery > old.historical_peak_mastery then
+                v_granted_level := greatest(v_granted_level, new.historical_peak_mastery);
             end if;
         end if;
 
@@ -139,6 +134,70 @@ begin
                 is distinct from new.skill_node_id
         then
             raise exception 'skill-state projection/event skill mismatch';
+        end if;
+        v_evidence_ids := new.evidence_summary->'event_ids';
+        if v_evidence_ids is not null then
+            if pg_catalog.jsonb_typeof(v_evidence_ids) is distinct from 'array' then
+                raise exception 'skill evidence event_ids must be an array';
+            end if;
+            for v_evidence_id in
+                select value #>> '{}'
+                from pg_catalog.jsonb_array_elements(v_evidence_ids)
+            loop
+                if not exists (
+                    select 1 from public.mls_learning_events e
+                    where e.event_id = v_evidence_id
+                      and e.metadata->>'skill_node_id' = new.skill_node_id
+                ) then
+                    raise exception 'skill evidence event is missing or belongs to another skill';
+                end if;
+            end loop;
+        end if;
+        if tg_op = 'INSERT' then
+            v_granted_level := new.mastery_level;
+            v_level_change := v_granted_level <> 'M0';
+        else
+            v_level_change := new.mastery_level is distinct from old.mastery_level;
+            if new.mastery_level > old.mastery_level then
+                v_granted_level := new.mastery_level;
+            end if;
+        end if;
+    end if;
+
+    -- INSERT and UPDATE share the same assessed-performance gate. A historical
+    -- peak grant is a mastery grant too. Timing-only projections do not grant M-levels.
+    if v_level_change then
+        if pg_catalog.jsonb_typeof(v_evidence_ids) is distinct from 'array'
+           or not (v_evidence_ids ? new.last_learning_event_id)
+        then
+            raise exception 'mastery-level change lacks event evidence';
+        end if;
+        if v_event.event_type not in (
+            'retrieval','socratic_response','self_correction','explanation',
+            'feynman','counterfactual','transfer','clinical_transfer'
+        ) then
+            raise exception 'event type cannot grant mastery-level change';
+        end if;
+        if v_event.outcome is null
+           or v_event.outcome not in ('correct','partial','incorrect')
+           or (v_granted_level <> 'M0' and v_event.outcome <> 'correct')
+        then
+            raise exception 'mastery grant requires assessed correct performance';
+        end if;
+        v_ceiling := v_event.metadata->>'evidence_ceiling';
+        if v_ceiling is not null and v_ceiling not in (
+            'M0','M1','M2','M3','M4','M5','M6','M7'
+        ) then
+            raise exception 'invalid performance evidence ceiling';
+        end if;
+        if (v_ceiling is not null and v_granted_level > v_ceiling)
+           or (v_event.metadata->>'evidence_kind' = 'recognition' and v_granted_level > 'M1')
+           or (v_granted_level > 'M1' and (
+               v_event.hint_level > 0
+               or v_event.metadata->>'assisted' = 'true'
+           ))
+        then
+            raise exception 'performance evidence exceeds mastery ceiling';
         end if;
     end if;
 

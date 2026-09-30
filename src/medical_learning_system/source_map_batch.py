@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .native_pdf_text import native_pdf_page_count
 from .sources import sha256_file
 
 
-SCHEMA_VERSION = "1.1.0"
-BLOCK_CACHE_VERSION = "page-blocks-v1"
+SCHEMA_VERSION = "1.4.0"
+BLOCK_CACHE_VERSION = "page-blocks-v2"
 _DEFAULT_HEADING_FIELDS = (
     "heading_expected_raw",
     "heading_expected_normalized",
@@ -36,6 +37,16 @@ class SourceIdentity(BaseModel):
     binding_state: str = Field(min_length=1)
 
 
+class EvidenceSpan(BaseModel):
+    line_index: int = Field(ge=0)
+    span_index: int = Field(ge=0)
+    text: str
+    bbox: tuple[float, float, float, float]
+    font: str | None = None
+    size: float | None = Field(default=None, ge=0.0)
+    flags: int | None = None
+
+
 class EvidenceBlock(BaseModel):
     page: int = Field(ge=1)
     block_index: int = Field(ge=0)
@@ -43,6 +54,18 @@ class EvidenceBlock(BaseModel):
     bbox: tuple[float, float, float, float]
     font_sizes: list[float] = Field(default_factory=list)
     fonts: list[str] = Field(default_factory=list)
+    spans: list[EvidenceSpan] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_span_sequence(self) -> EvidenceBlock:
+        if any(span.span_index != index for index, span in enumerate(self.spans)):
+            raise ValueError("span_index values must match their position in the block")
+        if any(
+            current.line_index < previous.line_index
+            for previous, current in zip(self.spans, self.spans[1:])
+        ):
+            raise ValueError("span line indices must be in source order")
+        return self
 
 
 class RowEvidence(BaseModel):
@@ -62,12 +85,52 @@ class ReviewPacketRow(BaseModel):
     evidence: RowEvidence
 
 
+class BatchScope(BaseModel):
+    work_key: str = Field(min_length=1)
+    unit_field: str = Field(min_length=1)
+    authorized_units: list[str | int] = Field(min_length=1)
+    expected_counts: dict[str, int]
+    expected_total: int = Field(ge=1)
+    pdf_page_start: int | None = Field(default=None, ge=1)
+    pdf_page_end: int | None = Field(default=None, ge=1)
+    reverse_coverage_required: bool = True
+    classification_required: bool = False
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "BatchScope":
+        unit_keys = [str(unit) for unit in self.authorized_units]
+        if len(unit_keys) != len(set(unit_keys)):
+            raise ValueError("authorized_units contains duplicates")
+        if set(self.expected_counts) != set(unit_keys):
+            raise ValueError("expected_counts keys must exactly match authorized_units")
+        if any(count < 0 for count in self.expected_counts.values()):
+            raise ValueError("expected_counts must be non-negative")
+        if sum(self.expected_counts.values()) != self.expected_total:
+            raise ValueError("expected_counts do not sum to expected_total")
+        if (self.pdf_page_start is None) != (self.pdf_page_end is None):
+            raise ValueError("physical scope requires both pdf_page_start and pdf_page_end")
+        if (
+            self.pdf_page_start is not None
+            and self.pdf_page_end is not None
+            and self.pdf_page_end < self.pdf_page_start
+        ):
+            raise ValueError("pdf_page_end precedes pdf_page_start")
+        if self.reverse_coverage_required and self.pdf_page_start is None:
+            raise ValueError("reverse coverage requires an explicit physical PDF scope")
+        return self
+
+
 class ReviewPacket(BaseModel):
     schema_version: str = SCHEMA_VERSION
     batch_id: str = Field(min_length=1)
+    work_key: str | None = None
     manifest_sha256: str = Field(min_length=64, max_length=64)
+    scope_sha256: str | None = None
+    scope_evidence_sha256: str | None = None
+    scope: BatchScope | None = None
     source: SourceIdentity
     evidence_pages: list[int] = Field(default_factory=list)
+    scope_blocks: list[EvidenceBlock] = Field(default_factory=list)
     point_locator_only: bool = True
     allowed_dispositions: list[str] = Field(default_factory=list)
     rows: list[ReviewPacketRow]
@@ -93,10 +156,37 @@ class BatchDecision(BaseModel):
     notes: str | None = None
 
 
+
+class SourceAugmentation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    augmentation_observation_id: str = Field(min_length=1)
+    unit_value: str | int
+    pdf_page: int = Field(ge=1)
+    physical_block_indices: list[int] = Field(min_length=1)
+    span_refs: list[tuple[int, int]] = Field(default_factory=list)
+    exact_source_text: str = Field(min_length=1)
+    extraction_raw_text: str | None = None
+    font_span_evidence: dict[str, Any] = Field(default_factory=dict)
+    bbox: tuple[float, float, float, float]
+    source_id: str = Field(min_length=1)
+    source_sha256: str = Field(min_length=64, max_length=64)
+    source_observed: bool = True
+    final_classification: str
+    canonical_parent_observation_id: str | None = None
+    page_end: int | None = Field(default=None, ge=1)
+    notes: str | None = None
+
+
 class DecisionSet(BaseModel):
     schema_version: str = SCHEMA_VERSION
     batch_id: str = Field(min_length=1)
+    work_key: str | None = None
+    manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    scope_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    scope_evidence_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     decisions: list[BatchDecision]
+    augmentations: list[SourceAugmentation] = Field(default_factory=list)
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -110,6 +200,18 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 def canonical_sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _scope_evidence_sha256(
+    source: SourceIdentity,
+    scope: BatchScope,
+    blocks: list[EvidenceBlock],
+) -> str:
+    return canonical_sha256({
+        "source": source.model_dump(mode="json"),
+        "scope": scope.model_dump(mode="json"),
+        "blocks": [block.model_dump(mode="json") for block in blocks],
+    })
 
 
 def load_manifest_rows(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -131,6 +233,39 @@ def load_manifest_rows(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]
     if len(node_ids) != len(set(node_ids)):
         raise ValueError("manifest contains duplicate node IDs")
     return metadata, rows
+
+
+def validate_manifest_scope(
+    metadata: dict[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    required: bool = False,
+) -> BatchScope | None:
+    raw_scope = metadata.get("scope")
+    if raw_scope is None:
+        if required:
+            raise ValueError("manifest requires a machine-readable scope lock")
+        return None
+    scope = BatchScope.model_validate(raw_scope)
+    counts = {str(unit): 0 for unit in scope.authorized_units}
+    for row in rows:
+        value = row.get(scope.unit_field)
+        key = str(value)
+        if key not in counts:
+            raise ValueError(
+                f"manifest row is outside authorized scope: "
+                f"{scope.unit_field}={value!r}"
+            )
+        counts[key] += 1
+    if counts != scope.expected_counts:
+        raise ValueError(
+            f"scope population mismatch: expected={scope.expected_counts}; actual={counts}"
+        )
+    if len(rows) != scope.expected_total:
+        raise ValueError(
+            f"scope total mismatch: expected={scope.expected_total}; actual={len(rows)}"
+        )
+    return scope
 
 
 def _row_id(row: dict[str, Any]) -> str:
@@ -202,6 +337,45 @@ def evidence_pages_for_rows(
     return sorted(pages)
 
 
+def evidence_pages_for_scope(
+    rows: list[dict[str, Any]],
+    *,
+    scope: BatchScope | None,
+    neighbor_pages: int = 1,
+    page_count: int | None = None,
+) -> list[int]:
+    pages = set(
+        evidence_pages_for_rows(
+            rows,
+            neighbor_pages=neighbor_pages,
+            page_count=page_count,
+        )
+    )
+    if scope is None or not scope.reverse_coverage_required:
+        return sorted(pages)
+
+    assert scope.pdf_page_start is not None
+    assert scope.pdf_page_end is not None
+    if page_count is not None and scope.pdf_page_end > page_count:
+        raise ValueError(
+            f"physical scope exceeds the PDF: "
+            f"{scope.pdf_page_start}-{scope.pdf_page_end}; page_count={page_count}"
+        )
+    candidate = {page for row in rows for page in candidate_pages(row)}
+    outside = sorted(
+        page
+        for page in candidate
+        if page < scope.pdf_page_start or page > scope.pdf_page_end
+    )
+    if outside:
+        raise ValueError(
+            f"candidate pages escape the physical scope: {outside}; "
+            f"scope={scope.pdf_page_start}-{scope.pdf_page_end}"
+        )
+    pages.update(range(scope.pdf_page_start, scope.pdf_page_end + 1))
+    return sorted(pages)
+
+
 def _best_evidence(
     row: dict[str, Any],
     blocks_by_page: dict[int, list[EvidenceBlock]],
@@ -261,6 +435,7 @@ def build_review_packet(
     point_locator_only: bool = True,
     allowed_dispositions: list[str] | None = None,
     evidence_pages: list[int] | None = None,
+    scope: BatchScope | None = None,
 ) -> ReviewPacket:
     by_page: dict[int, list[EvidenceBlock]] = {}
     for block in blocks:
@@ -275,11 +450,29 @@ def build_review_packet(
         )
         for row in rows
     ]
+    scope_sha256 = (
+        canonical_sha256(scope.model_dump(mode="json")) if scope is not None else None
+    )
+    scope_blocks = (
+        sorted(blocks, key=lambda block: (block.page, block.block_index))
+        if scope is not None
+        else []
+    )
+    scope_evidence_sha256 = (
+        _scope_evidence_sha256(source, scope, scope_blocks)
+        if scope is not None
+        else None
+    )
     return ReviewPacket(
         batch_id=batch_id,
+        work_key=scope.work_key if scope is not None else None,
         manifest_sha256=manifest_sha256,
+        scope_sha256=scope_sha256,
+        scope_evidence_sha256=scope_evidence_sha256,
+        scope=scope,
         source=source,
         evidence_pages=evidence_pages or sorted(by_page),
+        scope_blocks=scope_blocks,
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions or [],
         rows=packet_rows,
@@ -287,10 +480,10 @@ def build_review_packet(
 
 
 def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
-    raw_page = page.get_text("dict", sort=True)
+    raw_page = page.get_text("dict")
     blocks: list[EvidenceBlock] = []
-    block_index = 0
-    for raw_block in raw_page.get("blocks", []):
+    # Keep the PDF's original block index; Source Map locators use this physical identity.
+    for block_index, raw_block in enumerate(raw_page.get("blocks", [])):
         if raw_block.get("type") != 0:
             continue
         lines = raw_block.get("lines") or []
@@ -302,6 +495,26 @@ def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
         if not text:
             continue
         bbox = raw_block.get("bbox") or (0.0, 0.0, 0.0, 0.0)
+        evidence_spans: list[EvidenceSpan] = []
+        span_index = 0
+        for line_index, line in enumerate(lines):
+            for span in line.get("spans") or []:
+                evidence_spans.append(
+                    EvidenceSpan(
+                        line_index=line_index,
+                        span_index=span_index,
+                        text=str(span.get("text") or ""),
+                        bbox=tuple(float(value) for value in (span.get("bbox") or bbox)),
+                        font=str(span.get("font")) if span.get("font") else None,
+                        size=(
+                            float(span["size"])
+                            if span.get("size") is not None
+                            else None
+                        ),
+                        flags=int(span["flags"]) if span.get("flags") is not None else None,
+                    )
+                )
+                span_index += 1
         blocks.append(
             EvidenceBlock(
                 page=page_number,
@@ -314,9 +527,9 @@ def _extract_page_blocks(page: Any, page_number: int) -> list[EvidenceBlock]:
                 fonts=sorted(
                     {str(span.get("font")) for span in spans if span.get("font")}
                 ),
+                spans=evidence_spans,
             )
         )
-        block_index += 1
     return blocks
 
 
@@ -409,10 +622,12 @@ def prepare_from_pdf(
     expected_size: int | None = None,
     point_locator_only: bool = True,
     allowed_dispositions: list[str] | None = None,
+    require_scope: bool = True,
 ) -> ReviewPacket:
     raw_manifest = manifest_path.read_bytes()
     manifest_sha256 = hashlib.sha256(raw_manifest).hexdigest()
-    _, rows = load_manifest_rows(manifest_path)
+    metadata, rows = load_manifest_rows(manifest_path)
+    scope = validate_manifest_scope(metadata, rows, required=require_scope)
 
     if expected_size is not None and pdf_path.stat().st_size != expected_size:
         raise ValueError(
@@ -420,8 +635,9 @@ def prepare_from_pdf(
         )
 
     page_count_hint = native_pdf_page_count(pdf_path)
-    evidence_pages = evidence_pages_for_rows(
+    evidence_pages = evidence_pages_for_scope(
         rows,
+        scope=scope,
         neighbor_pages=1,
         page_count=page_count_hint,
     )
@@ -457,6 +673,7 @@ def prepare_from_pdf(
         point_locator_only=point_locator_only,
         allowed_dispositions=allowed_dispositions,
         evidence_pages=evidence_pages,
+        scope=scope,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -486,6 +703,25 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
         errors.append(
             f"batch_id mismatch: packet={packet.batch_id!r}, decisions={decisions.batch_id!r}"
         )
+    if packet.scope is not None:
+        if decisions.work_key != packet.work_key:
+            errors.append(
+                f"work_key mismatch: packet={packet.work_key!r}, decisions={decisions.work_key!r}"
+            )
+        if decisions.manifest_sha256 != packet.manifest_sha256:
+            errors.append("decision manifest_sha256 does not match the locked packet")
+        if decisions.scope_sha256 != packet.scope_sha256:
+            errors.append("decision scope_sha256 does not match the locked packet")
+        expected_evidence_sha256 = _scope_evidence_sha256(
+            packet.source, packet.scope, packet.scope_blocks
+        )
+        if packet.scope_evidence_sha256 != expected_evidence_sha256:
+            errors.append("packet scope evidence digest mismatch")
+        if (
+            decisions.augmentations
+            and decisions.scope_evidence_sha256 != packet.scope_evidence_sha256
+        ):
+            errors.append("augmentation decisions are not bound to packet scope evidence")
 
     packet_ids = [row.node_id for row in packet.rows]
     decision_ids = [decision.node_id for decision in decisions.decisions]
@@ -533,6 +769,282 @@ def validate_decisions(packet: ReviewPacket, decisions: DecisionSet) -> list[str
                 f"{decision.node_id}: PDF page {page} exceeds source page count "
                 f"{packet.source.page_count}"
             )
+
+    has_structural_decisions = any(
+        decision.final_classification is not None
+        for decision in decisions.decisions
+    ) or bool(decisions.augmentations)
+    if packet.scope is not None and (
+        packet.scope.classification_required or has_structural_decisions
+    ):
+        required_classes = {"REQUIRED_SECTION", "REQUIRED_SUBSECTION"}
+        classification_by_id = {
+            decision.node_id: decision.final_classification
+            for decision in decisions.decisions
+        }
+        parent_by_id = {
+            decision.node_id: decision.canonical_parent_observation_id
+            for decision in decisions.decisions
+        }
+        unit_by_id = {
+            row.node_id: str(row.locked.get(packet.scope.unit_field))
+            for row in packet.rows
+        }
+
+        packet_id_set = set(packet_ids)
+        augmentation_ids = [
+            augmentation.augmentation_observation_id
+            for augmentation in decisions.augmentations
+        ]
+        if len(augmentation_ids) != len(set(augmentation_ids)):
+            errors.append("augmentations contain duplicate observation IDs")
+        collisions = sorted(packet_id_set.intersection(augmentation_ids))
+        if collisions:
+            errors.append(f"augmentation IDs collide with frozen rows: {collisions}")
+
+        for augmentation in decisions.augmentations:
+            augmentation_id = augmentation.augmentation_observation_id
+            classification_by_id[augmentation_id] = augmentation.final_classification
+            parent_by_id[augmentation_id] = augmentation.canonical_parent_observation_id
+            unit_by_id[augmentation_id] = str(augmentation.unit_value)
+            if unit_by_id[augmentation_id] not in {
+                str(unit) for unit in packet.scope.authorized_units
+            }:
+                errors.append(
+                    f"{augmentation_id}: augmentation is outside authorized scope"
+                )
+            if (
+                packet.scope.pdf_page_start is not None
+                and packet.scope.pdf_page_end is not None
+                and not (
+                    packet.scope.pdf_page_start
+                    <= augmentation.pdf_page
+                    <= packet.scope.pdf_page_end
+                )
+            ):
+                errors.append(
+                    f"{augmentation_id}: augmentation page is outside physical scope"
+                )
+            if augmentation.source_id != packet.source.source_id:
+                errors.append(f"{augmentation_id}: augmentation source_id mismatch")
+            if augmentation.source_sha256 != packet.source.content_sha256:
+                errors.append(f"{augmentation_id}: augmentation source SHA mismatch")
+            if not augmentation.source_observed:
+                errors.append(
+                    f"{augmentation_id}: augmentation must be source_observed=true"
+                )
+            if len(augmentation.physical_block_indices) != len(
+                set(augmentation.physical_block_indices)
+            ):
+                errors.append(f"{augmentation_id}: physical block indices contain duplicates")
+            block_by_key = {
+                (block.page, block.block_index): block
+                for block in packet.scope_blocks
+            }
+            if len(block_by_key) != len(packet.scope_blocks):
+                errors.append("packet scope evidence contains duplicate page/block identities")
+            selected_blocks = [
+                block_by_key.get((augmentation.pdf_page, block_index))
+                for block_index in augmentation.physical_block_indices
+            ]
+            if any(block is None for block in selected_blocks):
+                errors.append(
+                    f"{augmentation_id}: physical source block is missing from packet evidence"
+                )
+            else:
+                if augmentation.span_refs:
+                    if len(augmentation.span_refs) != len(set(augmentation.span_refs)):
+                        errors.append(f"{augmentation_id}: span references contain duplicates")
+                    selected_block_ids = set(augmentation.physical_block_indices)
+                    refs = []
+                    for block_index, span_index in augmentation.span_refs:
+                        if block_index not in selected_block_ids:
+                            errors.append(
+                                f"{augmentation_id}: span reference is outside selected blocks"
+                            )
+                            continue
+                        block = block_by_key.get((augmentation.pdf_page, block_index))
+                        span = next(
+                            (
+                                item for item in (block.spans if block is not None else [])
+                                if item.span_index == span_index
+                            ),
+                            None,
+                        )
+                        if span is None:
+                            errors.append(
+                                f"{augmentation_id}: source span is missing from packet evidence"
+                            )
+                            continue
+                        refs.append((block_index, span))
+                    if len(refs) == len(augmentation.span_refs):
+                        order = [
+                            (block_index, span.line_index, span.span_index)
+                            for block_index, span in refs
+                        ]
+                        if order != sorted(order):
+                            errors.append(
+                                f"{augmentation_id}: span references are not in source order"
+                            )
+                        for (previous_block, previous_span), (block_index, span) in zip(
+                            refs, refs[1:]
+                        ):
+                            previous_block_evidence = block_by_key.get(
+                                (augmentation.pdf_page, previous_block)
+                            )
+                            current_block_evidence = block_by_key.get(
+                                (augmentation.pdf_page, block_index)
+                            )
+                            previous_position = next(
+                                (
+                                    index
+                                    for index, item in enumerate(
+                                        previous_block_evidence.spans
+                                        if previous_block_evidence is not None
+                                        else []
+                                    )
+                                    if item is previous_span
+                                ),
+                                None,
+                            )
+                            current_position = next(
+                                (
+                                    index
+                                    for index, item in enumerate(
+                                        current_block_evidence.spans
+                                        if current_block_evidence is not None
+                                        else []
+                                    )
+                                    if item is span
+                                ),
+                                None,
+                            )
+                            if block_index == previous_block:
+                                contiguous = current_position == previous_position + 1
+                            else:
+                                contiguous = (
+                                    block_index == previous_block + 1
+                                    and previous_block_evidence is not None
+                                    and current_block_evidence is not None
+                                    and previous_position
+                                    == len(previous_block_evidence.spans) - 1
+                                    and current_position == 0
+                                )
+                            if not contiguous:
+                                errors.append(
+                                    f"{augmentation_id}: span references are not contiguous source spans"
+                                )
+                                break
+                        line_text: list[str] = []
+                        last_line: tuple[int, int] | None = None
+                        for block_index, span in refs:
+                            line = (block_index, span.line_index)
+                            if line != last_line:
+                                line_text.append(span.text)
+                                last_line = line
+                            else:
+                                line_text[-1] += span.text
+                        observed_text = " ".join(line_text)
+                        if observed_text != augmentation.exact_source_text:
+                            errors.append(
+                                f"{augmentation_id}: exact_source_text does not match packet spans"
+                            )
+                        observed_bbox = (
+                            min(span.bbox[0] for _, span in refs),
+                            min(span.bbox[1] for _, span in refs),
+                            max(span.bbox[2] for _, span in refs),
+                            max(span.bbox[3] for _, span in refs),
+                        )
+                    else:
+                        observed_bbox = augmentation.bbox
+                else:
+                    observed_text = "\n".join(
+                        block.text for block in selected_blocks if block is not None
+                    )
+                    if observed_text != augmentation.exact_source_text:
+                        errors.append(
+                            f"{augmentation_id}: exact_source_text does not match packet blocks"
+                        )
+                    observed_bbox = (
+                        min(block.bbox[0] for block in selected_blocks if block is not None),
+                        min(block.bbox[1] for block in selected_blocks if block is not None),
+                        max(block.bbox[2] for block in selected_blocks if block is not None),
+                        max(block.bbox[3] for block in selected_blocks if block is not None),
+                    )
+                if not all(
+                    math.isclose(actual, expected, abs_tol=0.01)
+                    for actual, expected in zip(augmentation.bbox, observed_bbox)
+                ):
+                    errors.append(
+                        f"{augmentation_id}: bbox does not match packet source blocks"
+                    )
+            if augmentation.page_end is not None:
+                errors.append(f"{augmentation_id}: augmentation page_end must be null")
+            if augmentation.final_classification not in required_classes:
+                errors.append(
+                    f"{augmentation_id}: augmentation must be a required structural identity"
+                )
+
+        all_ids = set(classification_by_id)
+        for decision in decisions.decisions:
+            classification = decision.final_classification
+            if decision.resolution_status == "VERIFIED" and not classification:
+                errors.append(
+                    f"{decision.node_id}: VERIFIED classification row has no final_classification"
+                )
+            if classification == "REQUIRED_SUBSECTION":
+                parent = decision.canonical_parent_observation_id
+                if not parent or parent not in all_ids:
+                    errors.append(
+                        f"{decision.node_id}: REQUIRED_SUBSECTION has missing parent"
+                    )
+                elif classification_by_id.get(parent) not in required_classes:
+                    errors.append(
+                        f"{decision.node_id}: REQUIRED_SUBSECTION parent is not structural"
+                    )
+                elif unit_by_id.get(parent) != unit_by_id.get(decision.node_id):
+                    errors.append(
+                        f"{decision.node_id}: REQUIRED_SUBSECTION parent crosses scope unit"
+                    )
+            if classification == "MERGE_WITH_ADJACENT_SOURCE_IDENTITY":
+                target = decision.merge_target_observation_id
+                if not target or target not in all_ids:
+                    errors.append(f"{decision.node_id}: MERGE has missing target")
+                elif classification_by_id.get(target) == "MERGE_WITH_ADJACENT_SOURCE_IDENTITY":
+                    errors.append(f"{decision.node_id}: MERGE cannot target another MERGE")
+                elif unit_by_id.get(target) != unit_by_id.get(decision.node_id):
+                    errors.append(f"{decision.node_id}: MERGE target crosses scope unit")
+
+        for augmentation in decisions.augmentations:
+            if augmentation.final_classification == "REQUIRED_SUBSECTION":
+                parent = augmentation.canonical_parent_observation_id
+                augmentation_id = augmentation.augmentation_observation_id
+                if not parent or parent not in all_ids:
+                    errors.append(
+                        f"{augmentation_id}: REQUIRED_SUBSECTION augmentation has missing parent"
+                    )
+                elif classification_by_id.get(parent) not in required_classes:
+                    errors.append(
+                        f"{augmentation_id}: augmentation parent is not structural"
+                    )
+                elif unit_by_id.get(parent) != unit_by_id.get(augmentation_id):
+                    errors.append(
+                        f"{augmentation_id}: augmentation parent crosses scope unit"
+                    )
+
+        for node_id in all_ids:
+            seen: set[str] = set()
+            cursor = node_id
+            while cursor in all_ids:
+                if cursor in seen:
+                    errors.append(f"{node_id}: structural parent cycle detected")
+                    break
+                seen.add(cursor)
+                parent = parent_by_id.get(cursor)
+                if not parent:
+                    break
+                cursor = parent
+
     return errors
 
 

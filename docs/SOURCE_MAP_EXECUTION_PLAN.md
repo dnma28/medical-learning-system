@@ -56,7 +56,7 @@ Candidate counts, bookmark counts and typography inventories are observations, n
 
 ## Roles
 
-Use at most one mutable evidence writer and one genuinely independent reviewer for the same book.
+Default to one Luna 6 mutable evidence writer and one Sol 6 genuinely independent reviewer/coordinator for the same frozen batch. Complete deterministic extraction and validation before model review; send Sol the exact immutable packet plus only the finite exceptions and source spans. A Sol code author on a separate issue needs a different independent review session.
 
 The evidence writer may extract, classify, repair the packet and create a new immutable staging version. That same session is not an independent reviewer of the version it materially authored.
 
@@ -120,35 +120,37 @@ Never bulk-promote the corpus.
 
 After the completed Costanzo pilot, choose the next **input-ready** book from live state. Prefer a book with exact source binding and a finite deterministic queue over one blocked by raw access or source corruption.
 
-As of the live refresh on 2026-09-27:
+As of the live refresh on 2026-09-28:
 
-- Costanzo, Kandel and Magee have completed certificate/promotion/readback and are `ready_for_hoc90`;
-- the first exact Costanzo HỌC90 pilot is live, and Source Map evidence links are hardened against stale-version/silent-fallback failures;
-- Kisner #166 is the current input-ready serial Source Map evidence target with an exact fingerprinted single-file source;
-- Katzung #124 has independently approved audit tooling but is parked at a required Appendix 1–3 physical-source gap; denominator remains NULL;
-- Robbins is parked at a registered-source corruption gap in its bounded middle-body interval;
-- Neumann is reduced to canonical Part 3/full-book access/binding evidence;
-- Junqueira remains blocked by registered-source Chapter 23 corruption/recovery evidence;
-- Stryer retains its exact-source finite exception queue for a later serial turn;
-- all other books remain pending source-map authoring/reconciliation according to fresh live readiness.
+- Costanzo, Kandel, Magee, Stryer, Bates, and Ganong have completed
+  certificate/promotion/readback and are `ready_for_hoc90` (**6/16**);
+- Guyton/Hall is the current serial closure target;
+- Guyton B1 Ch1–30 and B2 Ch31–60 are closed, and strict B3-A Ch61–65 has
+  independent PASS;
+- remaining Guyton B3 work must use small machine-scoped batches with exact row
+  populations and full physical reverse-coverage ranges;
+- O'Sullivan, Moore, and Yanoff/Duker remain review-ready after Guyton;
+- Medical Biochemistry remains evidence/reconciliation work;
+- Katzung, Kisner, Robbins, Neumann, and Junqueira remain behind explicit
+  source/access/corruption/binding gates.
 
 This paragraph is a checkpoint, not a permanent queue. Refresh before acting.
 
-## Current serial operation: Kisner
+## Current serial operation: Guyton/Hall
 
-Kisner #166 currently owns the mutable `source-map:kisner-therapeutic-exercise` work key.
+Continue from the latest independent reviewer checkpoint on #171. Do not reuse or
+salvage superseded full-B3/scope-violating artifacts. Every new B3 batch must freeze:
 
-The evidence-writer operation is bounded to:
+1. exact work key;
+2. exact chapter/unit set;
+3. exact per-unit and total candidate population;
+4. exact source PDF physical range for reverse coverage;
+5. candidate-ledger and source fingerprints;
+6. an atomic work lease after the stability migration is deployed;
+7. Drive readback + independent reviewer PASS before the next batch.
 
-1. exact registered Drive identity/fingerprint readback;
-2. internal title/edition/year evidence;
-3. printed/native hierarchy inventory;
-4. deterministic structural-vs-supplement classification;
-5. exact physical point locators with `page_end=null` unless the source directly verifies a range;
-6. a finite REVIEW_REQUIRED/SOURCE_GAP ledger and durable evidence packet;
-7. independent review before any denominator/staging proposal.
-
-Do not open a second mutable Kisner issue while #166 is active.
+No Guyton denominator/staging/certificate/promotion is authorized until the full
+Ch1–85 reconciliation and independent #174 gate close.
 
 ## Katzung parked checkpoint
 

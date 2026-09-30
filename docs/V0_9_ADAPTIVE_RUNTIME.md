@@ -68,6 +68,15 @@ provenance. Scheduling-only projections may update retrieval timing/counters wit
 changing M0–M7. Mastery-level changes require explicit event evidence and remain bounded
 by the evidence type/ceiling.
 
+Concept and skill INSERTs use the same gate as mastery-changing UPDATEs, including
+ConceptMastery's historical peak. Both cite the driving event (concept
+`evidence_for_mastery`, skill `evidence_summary.event_ids`). Only assessed learner
+performance types are accepted; a grant requires `outcome=correct`. Reductions may
+use assessed `partial`/`incorrect` performance. Explicit M0–M7 ceilings are enforced
+on newly granted levels/peaks; recognition and assisted responses cannot grant above
+M1. Existing higher historical peaks are preserved during a lower-level reassessment.
+This gate validates evidence eligibility; it does not automatically award any level.
+
 The single-user runtime permits only one resumable (ACTIVE/PAUSED) HỌC90 session.
 DeepTutor response evidence plus pending-interaction clear/session resume is committed
 atomically and idempotently per interaction. ACTIVE blueprint replacement is likewise

@@ -42,6 +42,7 @@ mls-hoc90-deeptutor = "medical_learning_system.cli.hoc90_deeptutor:main"
 mls-hoc90-bootstrap = "medical_learning_system.cli.hoc90_bootstrap:main"
 mls-compile-source-map-evidence = "medical_learning_system.cli.compile_source_map_evidence:main"
 mls-source-map-batch = "medical_learning_system.cli.source_map_batch:main"
+mls-pdf-preflight = "medical_learning_system.pdf_preflight:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
