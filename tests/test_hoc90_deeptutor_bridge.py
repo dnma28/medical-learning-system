@@ -35,6 +35,11 @@ class FakeStore:
         self.session = session
         return session
 
+    def get_deeptutor_submission(self, *, session_id, interaction_id):
+        return next((event for event in self.events
+                     if event.session_id == session_id
+                     and event.metadata.get("deeptutor_interaction_id") == interaction_id), None)
+
     def commit_deeptutor_submission(
         self,
         *,

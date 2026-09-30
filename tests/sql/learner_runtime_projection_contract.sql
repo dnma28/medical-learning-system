@@ -333,13 +333,8 @@ begin
     result := public.mls_commit_deeptutor_submission(
         '__runtime_session__',
         'interaction-1',
-        pg_catalog.jsonb_build_object(
-            'event_id','deeptutor-stable-1',
-            'session_id','__runtime_session__',
-            'event_type','socratic_response',
-            'metadata',pg_catalog.jsonb_build_object(
-                'deeptutor_interaction_id','interaction-1'
-            )
+        (result->'event') || pg_catalog.jsonb_build_object(
+            'created_at',pg_catalog.clock_timestamp()
         ),
         '{}'::jsonb,
         pg_catalog.clock_timestamp()

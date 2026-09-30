@@ -18,6 +18,9 @@ from .session import Hoc90Session, LearningEvent, SessionCheckpoint, SourceSpine
 class LearningStateStore(Protocol):
     def get_session(self, session_id: str) -> Hoc90Session | None: ...
     def save_session(self, session: Hoc90Session) -> Hoc90Session: ...
+    def get_deeptutor_submission(
+        self, *, session_id: str, interaction_id: str
+    ) -> LearningEvent | None: ...
     def commit_deeptutor_submission(
         self,
         *,
@@ -133,6 +136,17 @@ class Hoc90DeepTutorBridge:
         session_id: str,
         submission: DeepTutorSubmission,
     ) -> LearningEvent:
+        submission_payload = submission.model_dump(mode="json", exclude_none=True)
+        if submission.learner_response is not None:
+            submission_payload["learner_response"] = submission.learner_response.strip()
+        persisted = self.store.get_deeptutor_submission(
+            session_id=session_id, interaction_id=submission.interaction_id
+        )
+        if persisted is not None:
+            if persisted.metadata.get("deeptutor_submission") != submission_payload:
+                raise ValueError("Conflicting DeepTutor submission replay.")
+            return persisted
+
         session = self._require_session(session_id)
         checkpoint = session.checkpoint
         if checkpoint is None or checkpoint.pending_deeptutor_interaction is None:
@@ -175,7 +189,8 @@ class Hoc90DeepTutorBridge:
             update={
                 "event_id": self._stable_submission_event_id(
                     session_id, submission.interaction_id
-                )
+                ),
+                "metadata": {**event.metadata, "deeptutor_submission": submission_payload},
             }
         )
         cleared = checkpoint.model_copy(

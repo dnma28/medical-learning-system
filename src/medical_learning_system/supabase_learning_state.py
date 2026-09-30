@@ -117,7 +117,43 @@ class SupabaseLearningStateStore:
             raise RuntimeError("DeepTutor submission RPC readback missing")
         if str(result["event_id"]) != event.event_id:
             raise RuntimeError("DeepTutor idempotency returned a different event_id")
-        return event
+        if not isinstance(result.get("event"), dict):
+            raise RuntimeError("DeepTutor canonical event readback missing")
+        persisted = self._event_from_row(result["event"])
+        if (
+            persisted.event_id != event.event_id
+            or persisted.session_id != event.session_id
+            or persisted.metadata.get("deeptutor_interaction_id") != interaction_id
+        ):
+            raise RuntimeError("DeepTutor canonical event identity mismatch")
+        return persisted
+
+    @staticmethod
+    def _event_from_row(stored: dict[str, Any]) -> LearningEvent:
+        row = dict(stored)
+        row["metadata"] = dict(row.get("metadata") or {})
+        row["source_ref"] = row["metadata"].pop("source_ref", None)
+        return LearningEvent.model_validate(row)
+
+    def get_deeptutor_submission(
+        self, *, session_id: str, interaction_id: str
+    ) -> LearningEvent | None:
+        rows = _data(
+            self.client.table(self.EVENTS).select("*")
+            .eq("session_id", session_id)
+            .eq("metadata->>deeptutor_interaction_id", interaction_id)
+            .limit(1).execute()
+        )
+        return self._event_from_row(rows[0]) if rows else None
+
+    def _save_projection(self, table: str, row: dict[str, Any]) -> dict[str, Any]:
+        response = self.client.rpc(
+            "mls_save_learner_projection", {"p_table": table, "p_row": row}
+        ).execute()
+        result = getattr(response, "data", None)
+        if not isinstance(result, dict):
+            raise RuntimeError("Learner projection RPC readback missing")
+        return dict(result)
 
     def load_resumable_session(self) -> Hoc90Session | None:
         active = self._latest_session(SessionStatus.ACTIVE)
@@ -209,12 +245,9 @@ class SupabaseLearningStateStore:
             "source_contexts_seen": mastery.source_contexts_seen,
             "updated_at": _iso(mastery.updated_at),
         }
-        (
-            self.client.table(self.MASTERY)
-            .upsert(row, on_conflict="concept_id")
-            .execute()
-        )
-        return mastery
+        saved = self._save_projection(self.MASTERY, row)
+        saved["state"] = saved.pop("coarse_state")
+        return ConceptMastery.model_validate(saved)
 
     def get_mastery(self, concept_id: str) -> ConceptMastery | None:
         response = (
@@ -378,12 +411,7 @@ class SupabaseLearningStateStore:
             "evidence_summary": state.evidence_summary,
             "updated_at": _iso(state.updated_at),
         }
-        (
-            self.client.table(self.SKILL_STATE)
-            .upsert(row, on_conflict="skill_node_id")
-            .execute()
-        )
-        return state
+        return SkillState.model_validate(self._save_projection(self.SKILL_STATE, row))
 
     def get_skill_state(self, skill_node_id: str) -> SkillState | None:
         response = (

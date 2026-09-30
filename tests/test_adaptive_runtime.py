@@ -136,6 +136,13 @@ class FakeClient:
     def table(self, name):
         return FakeQuery(self, name)
 
+    def rpc(self, name, params):
+        assert name == "mls_save_learner_projection"
+        table = params["p_table"]
+        key = "concept_id" if table == "mls_concept_mastery" else "skill_node_id"
+        response = self.table(table).upsert(params["p_row"], on_conflict=key).execute()
+        return type("Rpc", (), {"execute": lambda _: Response(response.data[0])})()
+
 
 def make_session():
     return Hoc90Session(
@@ -216,9 +223,9 @@ def test_learning_state_is_written_incrementally_and_resumable():
         event_type=LearningEventType.SOCRATIC_RESPONSE,
         concept_id="electrochemical-gradient",
         question_id="q1",
-        outcome="partial",
-        answer_summary="Phân biệt được gradient nồng độ nhưng thiếu lực điện.",
-        hint_level=1,
+        outcome="correct",
+        answer_summary="Phân biệt được gradient nồng độ và lực điện.",
+        hint_level=0,
     )
     store.append_event(event)
 
@@ -367,6 +374,7 @@ def test_skill_tree_state_roundtrips_without_touching_concept_mastery():
         session_id="skill-session-1",
         event_type=LearningEventType.CLINICAL_TRANSFER,
         concept_id="clinical-reasoning-case",
+        outcome="correct",
         metadata={"skill_node_id": node.skill_node_id},
     )
     # Fake persistence does not enforce the session FK; production Supabase does.

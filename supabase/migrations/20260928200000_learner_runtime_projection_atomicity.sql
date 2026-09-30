@@ -223,6 +223,63 @@ create trigger mls_skill_state_event_provenance
 before insert or update on public.mls_skill_state
 for each row execute function public.mls_validate_learner_projection_event();
 
+-- BEFORE INSERT runs even for an ON CONFLICT update. Choose the real operation
+-- under one identity lock so retained mastery is not mistaken for a new grant.
+create or replace function public.mls_save_learner_projection(
+    p_table text, p_row jsonb
+) returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+    v_key_column text;
+    v_key text;
+    v_existing jsonb;
+    v_saved jsonb;
+    v_columns text;
+begin
+    if p_table = 'mls_concept_mastery' then
+        v_key_column := 'concept_id';
+    elsif p_table = 'mls_skill_state' then
+        v_key_column := 'skill_node_id';
+    else
+        raise exception 'unsupported learner projection table';
+    end if;
+    if pg_catalog.jsonb_typeof(p_row) is distinct from 'object' then
+        raise exception 'learner projection payload must be an object';
+    end if;
+    v_key := p_row->>v_key_column;
+    if nullif(pg_catalog.btrim(v_key),'') is null then
+        raise exception 'learner projection identity is required';
+    end if;
+    perform pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended('learner-projection:' || p_table || ':' || v_key,0)
+    );
+    execute pg_catalog.format(
+        'select to_jsonb(t) from public.%I t where %I=$1 for update',
+        p_table,v_key_column
+    ) into v_existing using v_key;
+
+    if v_existing is null then
+        execute pg_catalog.format(
+            'insert into public.%I select * from jsonb_populate_record(null::public.%I,$1) returning to_jsonb(%I)',
+            p_table,p_table,p_table
+        ) into v_saved using p_row;
+    else
+        select pg_catalog.string_agg(pg_catalog.quote_ident(attname),',' order by attnum)
+        into v_columns from pg_catalog.pg_attribute
+        where attrelid=pg_catalog.to_regclass(pg_catalog.format('public.%I',p_table))
+          and attnum > 0 and not attisdropped and attname <> v_key_column;
+        execute pg_catalog.format(
+            'update public.%I set (%s)=(select %s from jsonb_populate_record(null::public.%I,$1)) where %I=$2 returning to_jsonb(%I)',
+            p_table,v_columns,v_columns,p_table,v_key_column,p_table
+        ) into v_saved using p_row,v_key;
+    end if;
+    return v_saved;
+end;
+$$;
+
 -- Current architecture is single-user and resume-first. Two simultaneous
 -- ACTIVE/PAUSED sessions are ambiguous and previously depended on latest-row choice.
 create unique index if not exists idx_mls_single_resumable_session
@@ -250,13 +307,33 @@ set search_path = ''
 as $$
 declare
     v_session public.mls_learning_sessions%rowtype;
-    v_existing_event_id text;
+    v_existing_event public.mls_learning_events%rowtype;
+    v_candidate public.mls_learning_events%rowtype;
     v_event_id text;
 begin
     if nullif(pg_catalog.btrim(p_interaction_id),'') is null
-       or pg_catalog.jsonb_typeof(p_event) <> 'object'
+       or pg_catalog.jsonb_typeof(p_event) is distinct from 'object'
     then
         raise exception 'invalid DeepTutor submission payload';
+    end if;
+
+    select * into v_candidate
+    from pg_catalog.jsonb_populate_record(null::public.mls_learning_events,p_event);
+    v_candidate.hint_level := coalesce(v_candidate.hint_level,0);
+    v_candidate.metadata := coalesce(v_candidate.metadata,'{}'::jsonb);
+    v_candidate.concept_id := nullif(v_candidate.concept_id,'');
+    v_candidate.question_id := nullif(v_candidate.question_id,'');
+    v_candidate.outcome := nullif(v_candidate.outcome,'');
+    v_candidate.answer_summary := nullif(v_candidate.answer_summary,'');
+    v_candidate.created_at := coalesce(v_candidate.created_at,pg_catalog.clock_timestamp());
+    if v_candidate.session_id is distinct from p_session_id
+       or v_candidate.metadata->>'deeptutor_interaction_id' is distinct from p_interaction_id
+    then
+        raise exception 'DeepTutor event/session identity mismatch';
+    end if;
+    v_event_id := v_candidate.event_id;
+    if nullif(v_event_id,'') is null then
+        raise exception 'DeepTutor event_id is required';
     end if;
 
     perform pg_catalog.pg_advisory_xact_lock(
@@ -265,16 +342,24 @@ begin
         )
     );
 
-    select event_id into v_existing_event_id
+    select * into v_existing_event
     from public.mls_learning_events
     where session_id = p_session_id
       and metadata->>'deeptutor_interaction_id' = p_interaction_id
     limit 1;
 
     if found then
+        -- A fresh timestamp on retry is not new learner evidence. Everything
+        -- else, including outcome, answer and source metadata, must agree.
+        if (pg_catalog.to_jsonb(v_existing_event) - 'created_at')
+           is distinct from (pg_catalog.to_jsonb(v_candidate) - 'created_at')
+        then
+            raise exception 'conflicting DeepTutor submission replay';
+        end if;
         return pg_catalog.jsonb_build_object(
-            'event_id', v_existing_event_id,
-            'idempotent', true
+            'event_id', v_existing_event.event_id,
+            'idempotent', true,
+            'event', pg_catalog.to_jsonb(v_existing_event)
         );
     end if;
 
@@ -293,34 +378,8 @@ begin
         raise exception 'DeepTutor interaction does not match pending checkpoint';
     end if;
 
-    if p_event->>'session_id' is distinct from p_session_id
-       or p_event->'metadata'->>'deeptutor_interaction_id'
-            is distinct from p_interaction_id
-    then
-        raise exception 'DeepTutor event/session identity mismatch';
-    end if;
-
-    v_event_id := p_event->>'event_id';
-    if nullif(v_event_id,'') is null then
-        raise exception 'DeepTutor event_id is required';
-    end if;
-
-    insert into public.mls_learning_events(
-        event_id, session_id, event_type, concept_id, question_id,
-        outcome, answer_summary, hint_level, metadata, created_at
-    ) values (
-        v_event_id,
-        p_session_id,
-        p_event->>'event_type',
-        nullif(p_event->>'concept_id',''),
-        nullif(p_event->>'question_id',''),
-        nullif(p_event->>'outcome',''),
-        nullif(p_event->>'answer_summary',''),
-        coalesce((p_event->>'hint_level')::integer,0),
-        coalesce(p_event->'metadata','{}'::jsonb),
-        coalesce((p_event->>'created_at')::timestamptz,
-                 pg_catalog.clock_timestamp())
-    );
+    insert into public.mls_learning_events select v_candidate.*
+    returning * into v_existing_event;
 
     update public.mls_learning_sessions
     set status='active',
@@ -330,7 +389,8 @@ begin
 
     return pg_catalog.jsonb_build_object(
         'event_id', v_event_id,
-        'idempotent', false
+        'idempotent', false,
+        'event', pg_catalog.to_jsonb(v_existing_event)
     );
 end;
 $$;
@@ -389,6 +449,10 @@ $$;
 
 revoke all on function public.mls_validate_learner_projection_event()
     from public, anon, authenticated;
+revoke all on function public.mls_save_learner_projection(text,jsonb)
+    from public, anon, authenticated;
+grant execute on function public.mls_save_learner_projection(text,jsonb)
+    to service_role;
 revoke all on function public.mls_commit_deeptutor_submission(
     text,text,jsonb,jsonb,timestamptz
 ) from public, anon, authenticated;
