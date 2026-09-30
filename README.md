@@ -53,6 +53,8 @@ Parser output proposes Source Map structure and locators; a human-readable Drive
 9. Current/time-sensitive clinical claims require an explicit current-validity gate before being presented as current standard.
 10. Every important answer should remain traceable toward source → passage/figure/table/equation → page/chapter → edition → physical Drive file.
 
+For long ChatGPT Work sessions, see [Chat response continuity](docs/CHAT_RESPONSE_CONTINUITY.md) for bounded replies and recovery after a cut-off answer.
+
 ## Adaptive HỌC90 runtime
 
 The target interaction is:
