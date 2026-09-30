@@ -316,6 +316,24 @@ def test_lost_response_retry_returns_persisted_event(store, monkeypatch):
     assert len(committed) == 1
 
 
+def test_commit_between_event_lookup_and_checkpoint_read_is_recovered(store, monkeypatch):
+    bridge, interaction = prepare(store)
+    submission = DeepTutorSubmission(interaction_id=interaction, learner_response="answer")
+    other = Hoc90DeepTutorBridge(store=SupabaseLearningStateStore(store.client))
+    original_lookup = store.get_deeptutor_submission
+    committed = []
+
+    def stale_lookup(**kwargs):
+        result = original_lookup(**kwargs)
+        if not committed:
+            committed.append(other.submit(session_id="session-1", submission=submission))
+        return result
+
+    monkeypatch.setattr(store, "get_deeptutor_submission", stale_lookup)
+    assert bridge.submit(session_id="session-1", submission=submission) == committed[0]
+    assert len(store.client.table(store.EVENTS).select("*").execute().data) == 1
+
+
 @pytest.mark.parametrize("quiz", [False, True])
 def test_racing_real_bridge_candidates_reject_conflict_return_only_committed(store, quiz):
     bridge, interaction = prepare(store, quiz=quiz)

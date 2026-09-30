@@ -149,6 +149,16 @@ class Hoc90DeepTutorBridge:
 
         session = self._require_session(session_id)
         checkpoint = session.checkpoint
+        pending = checkpoint.pending_deeptutor_interaction if checkpoint else None
+        if pending is None or pending.get("interaction_id") != submission.interaction_id:
+            # Another request may commit between the event lookup and session read.
+            persisted = self.store.get_deeptutor_submission(
+                session_id=session_id, interaction_id=submission.interaction_id
+            )
+            if persisted is not None:
+                if persisted.metadata.get("deeptutor_submission") != submission_payload:
+                    raise ValueError("Conflicting DeepTutor submission replay.")
+                return persisted
         if checkpoint is None or checkpoint.pending_deeptutor_interaction is None:
             raise RuntimeError("The HỌC90 session has no pending DeepTutor interaction.")
 
