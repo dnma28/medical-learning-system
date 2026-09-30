@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field, model_validator
@@ -17,7 +18,16 @@ from .session import Hoc90Session, LearningEvent, SessionCheckpoint, SourceSpine
 class LearningStateStore(Protocol):
     def get_session(self, session_id: str) -> Hoc90Session | None: ...
     def save_session(self, session: Hoc90Session) -> Hoc90Session: ...
-    def append_event(self, event: LearningEvent) -> LearningEvent: ...
+    def get_deeptutor_submission(
+        self, *, session_id: str, interaction_id: str
+    ) -> LearningEvent | None: ...
+    def commit_deeptutor_submission(
+        self,
+        *,
+        event: LearningEvent,
+        resumed_session: Hoc90Session,
+        interaction_id: str,
+    ) -> LearningEvent: ...
 
 
 class DeepTutorSubmission(BaseModel):
@@ -126,8 +136,29 @@ class Hoc90DeepTutorBridge:
         session_id: str,
         submission: DeepTutorSubmission,
     ) -> LearningEvent:
+        submission_payload = submission.model_dump(mode="json", exclude_none=True)
+        if submission.learner_response is not None:
+            submission_payload["learner_response"] = submission.learner_response.strip()
+        persisted = self.store.get_deeptutor_submission(
+            session_id=session_id, interaction_id=submission.interaction_id
+        )
+        if persisted is not None:
+            if persisted.metadata.get("deeptutor_submission") != submission_payload:
+                raise ValueError("Conflicting DeepTutor submission replay.")
+            return persisted
+
         session = self._require_session(session_id)
         checkpoint = session.checkpoint
+        pending = checkpoint.pending_deeptutor_interaction if checkpoint else None
+        if pending is None or pending.get("interaction_id") != submission.interaction_id:
+            # Another request may commit between the event lookup and session read.
+            persisted = self.store.get_deeptutor_submission(
+                session_id=session_id, interaction_id=submission.interaction_id
+            )
+            if persisted is not None:
+                if persisted.metadata.get("deeptutor_submission") != submission_payload:
+                    raise ValueError("Conflicting DeepTutor submission replay.")
+                return persisted
         if checkpoint is None or checkpoint.pending_deeptutor_interaction is None:
             raise RuntimeError("The HỌC90 session has no pending DeepTutor interaction.")
 
@@ -164,14 +195,30 @@ class Hoc90DeepTutorBridge:
                 source_ref=checkpoint.source_ref,
             )
 
-        self.store.append_event(event)
-
+        event = event.model_copy(
+            update={
+                "event_id": self._stable_submission_event_id(
+                    session_id, submission.interaction_id
+                ),
+                "metadata": {**event.metadata, "deeptutor_submission": submission_payload},
+            }
+        )
         cleared = checkpoint.model_copy(
             update={"pending_deeptutor_interaction": None}
         )
         resumed = session.model_copy(update={"checkpoint": cleared}).resume()
-        self.store.save_session(resumed)
-        return event
+        return self.store.commit_deeptutor_submission(
+            event=event,
+            resumed_session=resumed,
+            interaction_id=submission.interaction_id,
+        )
+
+    @staticmethod
+    def _stable_submission_event_id(session_id: str, interaction_id: str) -> str:
+        digest = sha256(
+            f"{session_id}|{interaction_id}".encode("utf-8")
+        ).hexdigest()
+        return f"deeptutor-{digest[:40]}"
 
     def _require_session(self, session_id: str) -> Hoc90Session:
         session = self.store.get_session(session_id)

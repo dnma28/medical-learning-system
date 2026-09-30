@@ -62,7 +62,9 @@ begin
     begin
         truncate public.mls_learning_events;
         raise exception 'owner TRUNCATE was accepted';
-    exception when sqlstate '55000' then null;
+    exception
+        when sqlstate '55000' then null;
+        when feature_not_supported then null;
     end;
     begin
         truncate public.mls_learning_sessions cascade;

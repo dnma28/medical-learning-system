@@ -59,6 +59,50 @@ State is written incrementally after meaningful responses. Examples:
 
 The event trail is not replaced when mastery changes. Aggregate learner state is derived from evidence, not used to erase history.
 
+### Projection integrity
+
+Derived learner tables are not independent authorities. Every mutation of
+`mls_concept_mastery`, `mls_learner_errors`, and `mls_skill_state` must bind to
+an existing append-only `mls_learning_events.event_id` with matching concept/skill
+provenance. Scheduling-only projections may update retrieval timing/counters without
+changing M0–M7. Mastery-level changes require explicit event evidence and remain bounded
+by the evidence type/ceiling.
+
+Concept and skill INSERTs use the same gate as mastery-changing UPDATEs, including
+ConceptMastery's historical peak. Both cite the driving event (concept
+`evidence_for_mastery`, skill `evidence_summary.event_ids`). Only assessed learner
+performance types are accepted; a grant requires `outcome=correct`. Reductions may
+use assessed `partial`/`incorrect` performance. Explicit M0–M7 ceilings are enforced
+on newly granted levels/peaks; recognition and assisted responses cannot grant above
+M1. Existing higher historical peaks are preserved during a lower-level reassessment.
+This gate validates evidence eligibility; it does not automatically award any level.
+
+The store saves ConceptMastery and SkillState through `mls_save_learner_projection`.
+The RPC locks the projection identity, locks an existing row, and executes an actual
+INSERT or UPDATE in one transaction. A table upsert would run BEFORE INSERT before
+ON CONFLICT and incorrectly treat retained mastery/peak as a fresh grant. True
+INSERTs still enforce the full grant gate; timing-only updates preserve higher levels.
+
+The single-user runtime permits only one resumable (ACTIVE/PAUSED) HỌC90 session.
+DeepTutor response evidence plus pending-interaction clear/session resume is committed
+atomically and idempotently per interaction. ACTIVE blueprint replacement is likewise
+one guarded transaction.
+
+DeepTutor retries resolve the persisted event before checking the pending checkpoint,
+so a committed submission remains retryable after resume or a newer interaction.
+The bridge stores the normalized submission in event metadata and rejects conflicting
+replays. The atomic RPC independently compares all persisted event fields except
+`created_at`, rejects material changes, and returns the canonical event on both first
+commit and retry. The store returns that readback, never an uncommitted candidate.
+No replay clears a newer checkpoint. Events predating submission metadata fail closed
+at the bridge rather than assuming their answer matches.
+
+`tests/test_runtime_postgres_contract.py` exercises these actual caller paths, including
+failed FSRS retrieval, assessed reductions, historical peaks, lost responses, CLI
+retries and racing different answers/quiz outcomes. Opt in only on a disposable local
+PostgreSQL server with `MLS_RUNTIME_POSTGRES_CONTRACT=1`; each test creates and drops
+its own database. CI runs PostgreSQL 17 and the transactional SQL rollback contracts.
+
 ## Session lifecycle
 
 ```text
