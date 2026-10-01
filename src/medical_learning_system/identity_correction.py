@@ -3,14 +3,16 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from .source_catalog import CatalogSource, SourceCatalog
+from .source_catalog import CatalogSource, IdentityStatus, SourceCatalog
 
 
 IDENTITY_FIELDS = frozenset({"edition", "publication_year", "identity_status"})
 PROVENANCE_NAMESPACE = "source_identity_reconciliation_v2_policy"
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def canonical_json_sha256(value: Any) -> str:
@@ -31,6 +33,47 @@ def _validate_identity_patch(identity_patch: dict[str, Any]) -> None:
     unexpected = sorted(set(identity_patch) - IDENTITY_FIELDS)
     if unexpected:
         raise ValueError(f"identity patch contains non-allowlisted fields: {unexpected}")
+
+    if "edition" in identity_patch:
+        edition = identity_patch["edition"]
+        if edition is not None and (
+            not isinstance(edition, str) or not edition.strip()
+        ):
+            raise ValueError("edition must be a non-empty string or null")
+
+    if "publication_year" in identity_patch:
+        year = identity_patch["publication_year"]
+        if year is not None and (
+            isinstance(year, bool)
+            or not isinstance(year, int)
+            or year < 1800
+            or year > 2200
+        ):
+            raise ValueError("publication_year must be an integer from 1800 to 2200 or null")
+
+    if "identity_status" in identity_patch:
+        status = identity_patch["identity_status"]
+        if not isinstance(status, str):
+            raise ValueError("identity_status must be a string enum value")
+        try:
+            IdentityStatus(status)
+        except ValueError as exc:
+            raise ValueError(f"invalid identity_status: {status!r}") from exc
+
+
+def _validate_guard_rows(
+    rows: list[dict[str, Any]],
+    *,
+    logical_source_id: str,
+    label: str,
+) -> None:
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"{label}[{index}] must be an object")
+        if row.get("logical_source_id") != logical_source_id:
+            raise ValueError(
+                f"{label}[{index}] does not belong to {logical_source_id}"
+            )
 
 
 @dataclass(frozen=True)
@@ -108,11 +151,18 @@ def prepare_identity_correction(
 ) -> IdentityCorrectionPlan:
     """Prepare a guarded one-book correction plan without performing a write.
 
-    Input list order is intentionally preserved in guard digests. Some historical
-    source manifests use non-sorted physical-source order and must remain exactly
-    reproducible.
+    Guard inputs are full rows for the same logical book. Input list order is
+    intentionally preserved in digests because historical source manifests can
+    use a non-sorted physical-source order that must remain reproducible.
     """
     _validate_identity_patch(identity_patch)
+
+    if not _SHA256_RE.fullmatch(expected_before_sha256):
+        raise ValueError("expected_before_sha256 must be a lowercase SHA-256 digest")
+    if not isinstance(metadata_value, dict):
+        raise ValueError("metadata_value must be an object")
+    if not isinstance(metadata_namespace, str) or not metadata_namespace.strip():
+        raise ValueError("metadata_namespace must be a non-empty string")
 
     logical_source_id = logical_row.get("logical_source_id")
     if not isinstance(logical_source_id, str) or not logical_source_id:
@@ -137,6 +187,22 @@ def prepare_identity_correction(
             f"metadata namespace already exists: {metadata_namespace}"
         )
 
+    _validate_guard_rows(
+        physical_sources,
+        logical_source_id=logical_source_id,
+        label="physical_sources",
+    )
+    _validate_guard_rows(
+        staging_rows,
+        logical_source_id=logical_source_id,
+        label="staging_rows",
+    )
+    _validate_guard_rows(
+        certificate_rows,
+        logical_source_id=logical_source_id,
+        label="certificate_rows",
+    )
+
     expected_after = copy.deepcopy(logical_row)
     expected_after.update(identity_patch)
     expected_metadata = copy.deepcopy(metadata)
@@ -150,10 +216,15 @@ def prepare_identity_correction(
 
     catalog_plan = None
     if catalog is not None:
+        patch_for_catalog = (
+            identity_patch
+            if catalog_identity_patch is None
+            else catalog_identity_patch
+        )
         catalog_plan = prepare_catalog_identity_patch(
             catalog,
             logical_source_id=logical_source_id,
-            identity_patch=catalog_identity_patch or identity_patch,
+            identity_patch=patch_for_catalog,
         )
 
     rollback = {
