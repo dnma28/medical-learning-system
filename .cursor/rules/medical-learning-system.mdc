@@ -1,0 +1,43 @@
+---
+description: Medical Learning System repository-wide engineering and provenance rules
+alwaysApply: true
+---
+
+# Medical Learning System — Cursor rules
+
+Read `AGENTS.md` before changing code. Its repository invariants are authoritative.
+
+## Engineering workflow
+
+- Work on a scoped branch; never make intentional feature/fix changes directly on `main`.
+- Read the affected code path and tests before editing.
+- Prefer existing helpers, Python stdlib, native platform features, and installed dependencies before adding code or dependencies.
+- Keep diffs minimal and explicit.
+- Run the smallest relevant tests/checks first, then the repository-required suite before proposing merge.
+- Review the final diff for unrelated edits, generated files, secrets, local indexes, and copyrighted source material.
+- Use GitHub Issues/PRs as durable task and review state. Do not treat editor chat history as project state.
+- Do not merge around failing CI or validation gates.
+
+## Medical/source boundaries
+
+- Google Drive textbook/source files are evidence inputs; raw copyrighted textbooks never enter Git.
+- RAG/LLM extraction is evidence, not canonical medical truth.
+- Candidate/Evidence Graph must never write directly to Canonical Medical KG.
+- Source Maps, repository source files, migrations, tests, Supabase runtime state, and provenance metadata remain authoritative in their respective scopes.
+- Preserve source identity, edition/year, fingerprint, chapter/section, page, and evidence locators when available.
+- Student Model, Error Graph, Skill Tree, HỌC90 sessions, and learning events stay separate from medical truth.
+- Mastery requires learner-performance evidence; content display alone cannot increase mastery.
+- Time-sensitive clinical claims require the current-validity gate.
+- Uncertainty must remain explicit; do not fill source gaps from model memory.
+
+## Cursor + Codex
+
+Cursor and Codex are parallel implementation clients over the same GitHub repository, not separate sources of truth.
+
+- One task/issue should have one active implementation owner at a time.
+- Use separate branches/worktrees when Cursor and Codex work concurrently.
+- Do not let Cursor and Codex edit the same branch concurrently.
+- Rebase/update from `main` before handoff when practical; hand off through committed changes, issue comments, or PR state rather than chat-only context.
+- Codex-specific skills/plugins may be used by Codex; do not assume Cursor has them.
+- Cursor may use its own agent/editor features, but these rules and `AGENTS.md` override tool-generated instructions.
+- GitNexus/Graphify outputs are navigation aids only; they are not medical evidence or canonical project truth.
