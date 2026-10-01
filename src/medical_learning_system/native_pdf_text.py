@@ -34,6 +34,7 @@ def parsed_document_from_native_pdf(
         raise ValueError("end_page is outside the PDF")
 
     blocks: list[ParsedBlock] = []
+    excluded_blocks: list[ParsedBlock] = []
     block_index = 0
     for page_index in range(first, last_exclusive):
         page = document[page_index]
@@ -48,7 +49,14 @@ def parsed_document_from_native_pdf(
             if not text:
                 continue
 
-            blocks.append(
+            # Only the source-verified distributor label in the bottom 5%.
+            # Never discard generic URLs, citations or mixed-content blocks.
+            watermark = (
+                text == "booksmedicos.org"
+                and float(raw[1]) >= page.rect.y0 + .95 * page.rect.height
+            )
+            destination = excluded_blocks if watermark else blocks
+            destination.append(
                 ParsedBlock(
                     block_index=block_index,
                     page_index=page_index,
@@ -60,7 +68,9 @@ def parsed_document_from_native_pdf(
                         float(raw[2]),
                         float(raw[3]),
                     ),
-                    source_type="native_pdf_text",
+                    source_type=(
+                        "distributor_watermark_footer" if watermark else "native_pdf_text"
+                    ),
                 )
             )
             block_index += 1
@@ -70,6 +80,7 @@ def parsed_document_from_native_pdf(
         parser="pymupdf-native",
         parser_version=str(version) if version else None,
         blocks=blocks,
+        excluded_blocks=excluded_blocks,
     )
 
 

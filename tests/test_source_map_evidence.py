@@ -250,7 +250,7 @@ def test_compiler_commits_exact_evidence_against_immutable_stage(tmp_path, monke
     )
 
     monkeypatch.setattr(sme, "sha256_file", lambda _: "a" * 64)
-    monkeypatch.setattr(sme, "parsed_document_from_native_pdf", lambda _: object())
+    monkeypatch.setattr(sme, "parsed_document_from_native_pdf", lambda _: sme.ParsedDocument(parser="test", blocks=[]))
     monkeypatch.setattr(sme, "materialize_evidence_only", lambda **_: [block])
     monkeypatch.setattr(
         sme,
@@ -285,7 +285,7 @@ def test_compiler_rechecks_promotion_before_atomic_commit(tmp_path, monkeypatch)
     )
     compiler.source_maps.change_on_second_read = True
     monkeypatch.setattr(sme, "sha256_file", lambda _: "a" * 64)
-    monkeypatch.setattr(sme, "parsed_document_from_native_pdf", lambda _: object())
+    monkeypatch.setattr(sme, "parsed_document_from_native_pdf", lambda _: sme.ParsedDocument(parser="test", blocks=[]))
     monkeypatch.setattr(sme, "materialize_evidence_only", lambda **_: [])
     monkeypatch.setattr(sme, "align_evidence_to_structure", lambda *_: [])
 
@@ -297,6 +297,38 @@ def test_compiler_rechecks_promotion_before_atomic_commit(tmp_path, monkeypatch)
         )
 
     assert compiler.links.committed is None
+
+
+def test_compiler_reports_exclusion_without_committing_watermark(tmp_path):
+    fitz = pytest.importorskip("fitz")
+    path = tmp_path / "synthetic.pdf"
+    with fitz.open() as doc:
+        for _ in range(8):
+            page = doc.new_page(width=612, height=792)
+        page.insert_text((40, 100), "1 Cellular Physiology")
+        page.insert_text((40, 150), "Teaching body with Smith (2020) citation.")
+        page.insert_text((40, 740), "http://thepoint.lww.com")
+        page.insert_text((40, 786), "booksmedicos.org")
+        doc.save(path)
+    compiler = CompilerUnderTest(
+        source_record(sme.sha256_file(path), size_bytes=path.stat().st_size),
+        map_nodes(),
+    )
+    result = compiler.compile_path(
+        logical_source_id=LOGICAL_ID, source_id=SOURCE_ID, path=path,
+    )
+    committed = compiler.links.committed
+    assert len(committed["blocks"]) == 3
+    assert len(committed["links"]) == 6
+    assert all(b.text != "booksmedicos.org" for b in committed["blocks"])
+    assert len(result.excluded_blocks) == 1
+    excluded = result.excluded_blocks[0]
+    assert excluded["reason"] == "distributor_watermark_footer"
+    assert (excluded["block_index"], excluded["page_index"], excluded["pdf_page"]) == (3, 7, 8)
+    assert excluded["bbox"] and excluded["parser_version"]
+    assert excluded["content_sha256"] == "5ed1562e1b8fc01563397cc666f3631632320c782073c2edb40c40fbb35dce4c"
+    assert excluded["evidence_id"] not in {link.evidence_id for link in committed["links"]}
+    assert "text" not in excluded and "asset_ref" not in excluded
 
 
 class Response:

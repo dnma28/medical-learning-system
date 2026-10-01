@@ -15,7 +15,7 @@ from .evidence_alignment import (
 )
 from .evidence_store import SourceEvidenceBlock
 from .native_pdf_text import parsed_document_from_native_pdf
-from .parser_contract import materialize_evidence_only
+from .parser_contract import ParsedDocument, materialize_evidence_only
 from .source_map import SourceMapNode
 from .source_registry import SourceRecord
 from .sources import sha256_file
@@ -23,7 +23,7 @@ from .supabase_source_map import SupabaseSourceMapStore
 from .supabase_storage import SupabaseMedicalStore
 
 
-COMPILER_VERSION = "source-map-evidence-v2"
+COMPILER_VERSION = "source-map-evidence-v3"
 
 
 def _data(response: Any) -> list[dict[str, Any]]:
@@ -51,6 +51,7 @@ class SourceMapEvidenceCompilation(BaseModel):
     linked_node_ids: list[str] = Field(default_factory=list)
     unlinked_node_ids: list[str] = Field(default_factory=list)
     migration_state: SourceMapEvidenceMigrationState
+    excluded_blocks: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SupabaseSourceMapEvidenceLinkStore:
@@ -216,6 +217,14 @@ class SupabaseSourceMapEvidenceCompiler:
 
         parsed = parsed_document_from_native_pdf(path)
         blocks = materialize_evidence_only(source_id=source_id, parsed=parsed)
+        excluded = materialize_evidence_only(
+            source_id=source_id,
+            parsed=ParsedDocument(
+                parser=parsed.parser,
+                parser_version=parsed.parser_version,
+                blocks=parsed.excluded_blocks,
+            ),
+        )
         candidate_links = align_evidence_to_structure(transient, blocks)
 
         # Weak page-range candidates are useful audit signals but are not strong
@@ -274,6 +283,16 @@ class SupabaseSourceMapEvidenceCompiler:
             linked_node_ids=sorted(linked_ids),
             unlinked_node_ids=unlinked_ids,
             migration_state=migration_state,
+            excluded_blocks=[
+                {
+                    **block.model_dump(mode="json", exclude={"text", "asset_ref"}),
+                    "pdf_page": block.pdf_page,
+                    "reason": raw.source_type,
+                }
+                for block, raw in zip(
+                    excluded, sorted(parsed.excluded_blocks, key=lambda item: item.block_index)
+                )
+            ],
         )
 
     def _existing_evidence_count(self, source_id: str) -> int:
