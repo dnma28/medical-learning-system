@@ -36,6 +36,30 @@ def logical_row():
     }
 
 
+def physical_source(source_id="source-a", logical_source_id="costanzo-physiology"):
+    return {
+        "source_id": source_id,
+        "logical_source_id": logical_source_id,
+        "content_sha256": "b" * 64,
+    }
+
+
+def stage(version=3, logical_source_id="costanzo-physiology"):
+    return {
+        "logical_source_id": logical_source_id,
+        "staging_version": version,
+        "payload_sha256": "c" * 64,
+    }
+
+
+def certificate(version=3, logical_source_id="costanzo-physiology"):
+    return {
+        "logical_source_id": logical_source_id,
+        "staging_version": version,
+        "certificate_sha256": "d" * 64,
+    }
+
+
 def test_prepare_identity_correction_preserves_metadata_and_runtime_fields():
     before = logical_row()
     plan = prepare_identity_correction(
@@ -50,11 +74,9 @@ def test_prepare_identity_correction_preserves_metadata_and_runtime_fields():
             "publication_year_status": "source_established",
             "certified_fields": ["edition", "publication_year"],
         },
-        physical_sources=[{"source_id": "source-a", "content_sha256": "b" * 64}],
-        staging_rows=[{"staging_version": 3, "payload_sha256": "c" * 64}],
-        certificate_rows=[
-            {"staging_version": 3, "certificate_sha256": "d" * 64}
-        ],
+        physical_sources=[physical_source()],
+        staging_rows=[stage()],
+        certificate_rows=[certificate()],
     )
 
     after = plan.expected_after_business_row
@@ -71,9 +93,10 @@ def test_prepare_identity_correction_preserves_metadata_and_runtime_fields():
     assert "updated_at" not in after
 
     assert plan.rollback["restore_identity_fields"] == {
+        "edition": "6",
         "identity_status": "verify_from_source",
         "publication_year": None,
-    } | {"edition": "6"}
+    }
     assert plan.rollback["restore_metadata_preimage"] == before["metadata"]
     assert plan.rollback["stop_on_concurrent_change"] is True
 
@@ -122,9 +145,46 @@ def test_identity_patch_cannot_touch_runtime_or_metadata_directly():
             )
 
 
+@pytest.mark.parametrize(
+    ("patch", "message"),
+    [
+        ({"edition": ""}, "edition"),
+        ({"publication_year": "2018"}, "publication_year"),
+        ({"publication_year": 1700}, "publication_year"),
+        ({"identity_status": "made_up"}, "identity_status"),
+    ],
+)
+def test_identity_patch_values_are_validated(patch, message):
+    before = logical_row()
+    with pytest.raises(ValueError, match=message):
+        prepare_identity_correction(
+            logical_row=before,
+            expected_before_sha256=canonical_json_sha256(before),
+            identity_patch=patch,
+            metadata_value={"status": "reviewed"},
+            physical_sources=[],
+            staging_rows=[],
+            certificate_rows=[],
+        )
+
+
+def test_guard_rows_must_belong_to_exact_logical_book():
+    before = logical_row()
+    with pytest.raises(ValueError, match="does not belong"):
+        prepare_identity_correction(
+            logical_row=before,
+            expected_before_sha256=canonical_json_sha256(before),
+            identity_patch={},
+            metadata_value={"status": "reviewed"},
+            physical_sources=[physical_source(logical_source_id="other-book")],
+            staging_rows=[],
+            certificate_rows=[],
+        )
+
+
 def test_guard_digests_preserve_input_order():
     before = logical_row()
-    first = [{"source_id": "b"}, {"source_id": "a"}]
+    first = [physical_source("b"), physical_source("a")]
     second = list(reversed(first))
 
     plan_a = prepare_identity_correction(
@@ -147,6 +207,25 @@ def test_guard_digests_preserve_input_order():
     )
 
     assert plan_a.physical_sources_sha256 != plan_b.physical_sources_sha256
+
+
+def test_explicit_empty_catalog_patch_is_not_replaced_by_identity_patch():
+    before = logical_row()
+    catalog = SourceCatalog.load(CATALOG)
+    plan = prepare_identity_correction(
+        logical_row=before,
+        expected_before_sha256=canonical_json_sha256(before),
+        identity_patch={"identity_status": "verified"},
+        metadata_value={"status": "reviewed"},
+        physical_sources=[physical_source()],
+        staging_rows=[],
+        certificate_rows=[],
+        catalog=catalog,
+        catalog_identity_patch={},
+    )
+
+    assert plan.catalog_patch is not None
+    assert plan.catalog_patch["changed_fields"] == []
 
 
 def test_scoped_catalog_patch_preserves_non_identity_fields():
