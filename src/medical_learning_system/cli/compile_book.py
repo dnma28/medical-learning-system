@@ -64,6 +64,8 @@ def main() -> None:
         "work_key": report.work_key,
         "total_rows": report.total_rows,
         "evidence_matched_rows": report.evidence_matched_rows,
+        "evidence_exception_rows": report.evidence_exception_rows,
+        "structural_review_rows": report.structural_review_rows,
         "review_exception_rows": report.review_exception_rows,
         "next_gate": report.next_gate,
         "publish_authorized": report.publish_authorized,
