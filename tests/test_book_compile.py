@@ -89,6 +89,8 @@ def test_compile_report_routes_clean_source_backed_row_to_independent_review():
     report = build_compile_report(_packet())
     assert report.total_rows == 1
     assert report.evidence_matched_rows == 1
+    assert report.evidence_exception_rows == 0
+    assert report.structural_review_rows == 0
     assert report.review_exception_rows == 0
     assert report.next_gate == "INDEPENDENT_REVIEW"
     assert report.publish_authorized is False
@@ -98,6 +100,8 @@ def test_compile_report_keeps_low_match_in_finite_exception_queue():
     report = build_compile_report(
         _packet(row=_row(reasons=["LOW_TEXT_MATCH"]))
     )
+    assert report.evidence_exception_rows == 1
+    assert report.structural_review_rows == 0
     assert report.review_exception_rows == 1
     assert report.exceptions[0].node_id == "n1"
     assert report.exceptions[0].reasons == ["LOW_TEXT_MATCH"]
@@ -114,6 +118,8 @@ def test_compile_report_never_auto_closes_unreviewed_structural_classification()
     }
     report = build_compile_report(_packet(row=_row(locked=locked)))
     assert report.evidence_matched_rows == 1
+    assert report.evidence_exception_rows == 0
+    assert report.structural_review_rows == 1
     assert report.review_exception_rows == 1
     assert report.exceptions[0].reasons == [
         "STRUCTURAL_REVIEW_REQUIRED",
