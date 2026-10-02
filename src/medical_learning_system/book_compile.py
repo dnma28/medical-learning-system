@@ -49,6 +49,8 @@ class BookCompileReport(BaseModel):
     packet_sha256: str
     total_rows: int = Field(ge=0)
     evidence_matched_rows: int = Field(ge=0)
+    evidence_exception_rows: int = Field(ge=0)
+    structural_review_rows: int = Field(ge=0)
     review_exception_rows: int = Field(ge=0)
     exceptions: list[CompileException] = Field(default_factory=list)
     next_gate: str
@@ -113,6 +115,19 @@ def build_compile_report(packet: ReviewPacket) -> BookCompileReport:
         not row.evidence.visual_required_reasons
         for row in packet.rows
     )
+    evidence_exception_rows = sum(
+        bool(row.evidence.visual_required_reasons)
+        for row in packet.rows
+    )
+    structural_reasons = {
+        "CLASSIFICATION_MISSING",
+        "STRUCTURAL_REVIEW_REQUIRED",
+        "STRUCTURAL_STATUS_UNRESOLVED",
+    }
+    structural_review_rows = sum(
+        bool(structural_reasons.intersection(item.reasons))
+        for item in exceptions
+    )
     source_gate_passed = packet.source.binding_state.upper() in _EXACT_BINDINGS
     if not source_gate_passed:
         next_gate = "SOURCE_BINDING_REVIEW"
@@ -133,6 +148,8 @@ def build_compile_report(packet: ReviewPacket) -> BookCompileReport:
         packet_sha256=canonical_sha256(packet.model_dump(mode="json")),
         total_rows=len(packet.rows),
         evidence_matched_rows=evidence_matched,
+        evidence_exception_rows=evidence_exception_rows,
+        structural_review_rows=structural_review_rows,
         review_exception_rows=len(exceptions),
         exceptions=exceptions,
         next_gate=next_gate,
