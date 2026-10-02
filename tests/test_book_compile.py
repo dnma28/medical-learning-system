@@ -143,3 +143,16 @@ def test_compile_report_keeps_source_binding_as_a_separate_gate():
     assert report.source_gate_passed is False
     assert report.next_gate == "SOURCE_BINDING_REVIEW"
     assert report.publish_authorized is False
+
+
+def test_compile_report_does_not_treat_bypass_as_pass():
+    locked = {
+        "node_id": "n1",
+        "chapter": 31,
+        "final_classification": "REQUIRED_SECTION",
+        "review_status": "BYPASS",
+        "selected_pdf_page": 426,
+    }
+    report = build_compile_report(_packet(row=_row(locked=locked)))
+    assert report.structural_review_rows == 1
+    assert report.exceptions[0].reasons == ["STRUCTURAL_REVIEW_REQUIRED"]
