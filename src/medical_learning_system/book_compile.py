@@ -57,11 +57,12 @@ class BookCompileReport(BaseModel):
     publish_authorized: bool = False
 
 
-def _status_text(row: ReviewPacketRow) -> str:
+def _status_values(row: ReviewPacketRow) -> tuple[str, ...]:
     fields = ("review_status", "resolution_status", "status")
-    return " ".join(
-        str(row.locked.get(field) or "").upper()
+    return tuple(
+        value
         for field in fields
+        if (value := str(row.locked.get(field) or "").upper())
     )
 
 
@@ -73,8 +74,13 @@ def exception_reasons(
     """Return only deterministic reasons that still need review."""
 
     reasons = list(row.evidence.visual_required_reasons)
-    status = _status_text(row)
-    if any(marker in status for marker in _UNRESOLVED_MARKERS):
+    statuses = _status_values(row)
+    unresolved = any(
+        marker in value
+        for value in statuses
+        for marker in _UNRESOLVED_MARKERS
+    )
+    if unresolved:
         reasons.append("STRUCTURAL_STATUS_UNRESOLVED")
 
     if classification_required:
@@ -85,8 +91,9 @@ def exception_reasons(
         if not classification:
             reasons.append("CLASSIFICATION_MISSING")
         independently_closed = (
-            "PASS" in status or "VERIFIED" in status
-        ) and not any(marker in status for marker in _UNRESOLVED_MARKERS)
+            any(value in {"PASS", "VERIFIED"} for value in statuses)
+            and not unresolved
+        )
         if not independently_closed:
             reasons.append("STRUCTURAL_REVIEW_REQUIRED")
 
