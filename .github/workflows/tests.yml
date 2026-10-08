@@ -37,7 +37,7 @@ jobs:
           MLS_TEST_POSTGRES_DSN: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
           pip install -e '.[dev,postgres]'
-          pytest -q tests/test_postgres_identity_correction.py tests/test_identity_backend_preflight.py
+          pytest -q tests/test_postgres_identity_correction.py tests/test_identity_backend_preflight.py tests/test_costanzo_identity_execution.py
       - name: Run Source Map promotion contract twice with rollback
         shell: bash
         run: |

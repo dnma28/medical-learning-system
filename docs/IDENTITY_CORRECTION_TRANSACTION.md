@@ -111,3 +111,53 @@ integration checks are explicitly skipped, not claimed as a local PASS.
 
 PostgreSQL lock semantics: https://www.postgresql.org/docs/17/sql-lock.html
 Psycopg transaction semantics: https://www.psycopg.org/psycopg3/docs/basic/transactions.html
+# Fixed Costanzo activation route (separate owner gate)
+
+`costanzo_identity_execution` consumes only the fixed v3 plan in
+`config/identity/costanzo-identity-plan-v3.json`, canonical digest
+`1cfcf79fee5bd981d3922fa5a201252d8273989ebdfa12e304a058a9fc926fd5`.
+It has no caller-supplied book, plan, DSN, rollback, retry or dry-run switch.
+The complete staging snapshot remains outside Git. Only identity facts,
+provenance hashes/locators and the small logical preimage live in this plan.
+
+The activation PR must stay unmerged until its final exact HEAD has independent
+code review/required CI, the exact external v3 artifact has independent proposal
+review, and a NEW explicit user owner decision covers the concrete packet.
+Merging activates the fixed main-push workflow. Preparation/code review, historical
+v2 approval, and a successful read-only connection do not authorize that merge.
+
+Before database connection, the caller verifies first main-push attempt, exact
+event checkout and its Git tree. It reads only the fixed public issue216 comments
+resource. The latest `MLS-Owner-Gate` record must be authored by repository owner
+dnma28/account331470099, begin with that exact marker and newline, followed by JSON
+containing status `APPROVED_FOR_PRODUCTION_APPLY`, exact logical book/plan/ZIP/tree/
+execution key, boolean apply authorization true and rollback false, actual positive
+owner-packet/plan-review/code-review IDs and the recorded user decision source.
+Absent/pending/revoked/malformed records, pagination, wrong trees or old digests
+stop. This is a recorded process gate under the shared GitHub account, not a
+cryptographic proof that a human clicked an approval. The coordinator must verify
+the actual independent review objects and explicit user decision before recording
+it. A code change requires fresh review and owner tree binding.
+
+After a complete consistent preimage validation, the caller claims only NEW key
+`source-map:costanzo-physiology:identity-apply:1cfcf79f:v1-20261008`, bound to the exact
+plan/ZIP/executable tree/owner record, then invokes the unchanged transactional
+executor ONCE. Under the same transaction advisory lock used by the RPC, ANY
+existing execution-key row (including expired active, released or completed)
+rejects before claim, retaining every old lease/provenance field. The existing
+RPC's reclaim behavior is never used by this route. Production secret names,
+fixed TLS connection target/timeouts and idle autocommit reuse the reviewed
+read-only preflight parameters, on a dedicated NEW connection without that
+preflight's read-only session setting. No grants or RPCs are created.
+
+The actual committed receipt is printed immediately after the executor returns,
+before readback/lease completion. Full after-row/timestamp/business/full guard
+readback is checked and logged as hashes/counts; only then the lease is completed
+with the run URL and proof digest. A failure after COMMIT can leave a committed
+receipt and incomplete lease; an ambiguous driver acknowledgement can leave no
+receipt despite commit. STOP, inspect actual logs and live state, and record the
+result. Do not rerun, release/reclaim or rollback automatically. First-attempt
+runtime/workflow guards reject Actions reruns. Any recovery or rollback needs its
+own concrete decision and actual live evidence; isolated rehearsal receipts never
+qualify as production receipts. The caller changes no physical/catalog/Source Map/
+evidence/curriculum/learner rows and provides no certification/promotion route.

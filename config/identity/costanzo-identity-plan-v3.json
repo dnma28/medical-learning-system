@@ -1,0 +1,220 @@
+{
+  "logical_source_id": "costanzo-physiology",
+  "before_row_sha256": "1631de94c724ccfc6de32d402365892449a761d2eadd027369ef0f265d9d4567",
+  "before_updated_at": "2026-09-26T09:34:55.627541+00:00",
+  "identity_patch": {
+    "edition": "6",
+    "publication_year": 2018,
+    "identity_status": "verified"
+  },
+  "metadata_namespace": "source_identity_reconciliation_v2_policy",
+  "metadata_value": {
+    "status": "PROPOSAL_ONLY_REVIEW_PENDING",
+    "supersedes_findings": [
+      "R196-01",
+      "R196-02"
+    ],
+    "source_packet_sha256": "9183331401f19be2e17b7b2521e2aad037901ffa43e929615dc89e29aa39cc77",
+    "independent_review": "https://github.com/dnma28/medical-learning-system/issues/196#issuecomment-5915488951",
+    "edition": "6",
+    "source_title_alias": "Physiology",
+    "certified_fields": [
+      "edition",
+      "publication_year"
+    ],
+    "publication_year_status": "source_established",
+    "publication_year_evidence": 2018,
+    "copyright_year": 2018,
+    "year_basis": "Internal Library of Congress Cataloging-in-Publication description, physical PDF p3: Elsevier, [2018]; not inferred from copyright.",
+    "physical_source_ids": [
+      "costanzo-physiology--b21837a317f0"
+    ],
+    "publisher": "Elsevier",
+    "authors_editors": [
+      "Linda S. Costanzo"
+    ],
+    "isbn": [
+      "9780323478816"
+    ],
+    "evidence_locators": [
+      {
+        "physical_pdf_page": 2,
+        "page_text_sha256": "6565bdc1981d2546348009b201a32c6d43991f90f810c009bde7dfe41ca0fb0a",
+        "native_text_available": true,
+        "render_sha256": "ffabca35af064512ed0fbf862b07ebea63e3bcf1f52a73ced1651e89ec45b6dd",
+        "method": "native text + visual render",
+        "surface": "internal title/copyright/cataloging",
+        "page_dimensions": [
+          0.0,
+          0.0,
+          612.0,
+          783.0
+        ]
+      },
+      {
+        "physical_pdf_page": 3,
+        "page_text_sha256": "68911c97ce59bd5c212b7b4aff024c170c0ed3053fb53d724140ddf299a136e0",
+        "native_text_available": true,
+        "render_sha256": "f68d36f37a5d877ffd68b3a3b7ac552ffa43c6598382586d8f141a6eb9a56d47",
+        "method": "native text + visual render",
+        "surface": "internal title/copyright/cataloging",
+        "page_dimensions": [
+          0.0,
+          0.0,
+          612.0,
+          783.0
+        ]
+      }
+    ]
+  },
+  "physical_sources_sha256": "9405f7c51e2e75d90095fb0f4dd9cd3d9dc454dd0b39e84a0bcf6d983456ca4d",
+  "staging_rows_sha256": "383a028a0b5adbebc2439749faa98376aa465716dc564e3ec50d5d7050faea6b",
+  "certificate_rows_sha256": "86ae3c14d6350f330372099c25c9ad52ceed3c586fed7225b54356f7440a6dc8",
+  "expected_after_business_row": {
+    "kind": "textbook",
+    "role": "concise mechanism clarification and physiology support",
+    "title": "Costanzo Physiology",
+    "domain": "physiology",
+    "edition": "6",
+    "metadata": {
+      "source_map_milestone_audit": {
+        "counts": {
+          "mapped": 863,
+          "anchored": 862,
+          "conflicts": 0,
+          "corpus_ready": false,
+          "deep_anchored": 852,
+          "runtime_nodes": 0,
+          "total_toc_items": null,
+          "source_map_state": "REVIEW_REQUIRED",
+          "logical_source_id": "costanzo-physiology",
+          "observed_candidates": 881,
+          "unresolved_observed": 19,
+          "unclassified_outline_items": 18
+        },
+        "audit_id": "source-map-audit-2026-09-24-1221Z",
+        "report_url": "https://drive.google.com/file/d/19ELa1jgV-Gj-7CpC-ApuTU-Oua7VakIR/view?usp=drivesdk",
+        "audit_state": "REVIEW_REQUIRED",
+        "observed_at": "2026-09-24T12:21:18.592022+00:00",
+        "recorded_at": "2026-09-24T12:48:45.362976+00:00",
+        "artifact_url": "https://drive.google.com/file/d/1JfDjIQPjg17ZW5lpGBZUExJUpWuOWDQz/view?usp=drivesdk",
+        "corpus_ready": false,
+        "sol_review_url": "https://github.com/dnma28/medical-learning-system/issues/97",
+        "source_gap_ids": [],
+        "total_toc_items": null,
+        "runtime_import_state": "BLOCKED_PENDING_SOURCE_AND_CONTRACT_REVIEW",
+        "total_toc_items_status": "REVIEW_REQUIRED",
+        "source_map_runtime_nodes": 0
+      },
+      "source_identity_reconciliation_v2_policy": {
+        "status": "PROPOSAL_ONLY_REVIEW_PENDING",
+        "supersedes_findings": [
+          "R196-01",
+          "R196-02"
+        ],
+        "source_packet_sha256": "9183331401f19be2e17b7b2521e2aad037901ffa43e929615dc89e29aa39cc77",
+        "independent_review": "https://github.com/dnma28/medical-learning-system/issues/196#issuecomment-5915488951",
+        "edition": "6",
+        "source_title_alias": "Physiology",
+        "certified_fields": [
+          "edition",
+          "publication_year"
+        ],
+        "publication_year_status": "source_established",
+        "publication_year_evidence": 2018,
+        "copyright_year": 2018,
+        "year_basis": "Internal Library of Congress Cataloging-in-Publication description, physical PDF p3: Elsevier, [2018]; not inferred from copyright.",
+        "physical_source_ids": [
+          "costanzo-physiology--b21837a317f0"
+        ],
+        "publisher": "Elsevier",
+        "authors_editors": [
+          "Linda S. Costanzo"
+        ],
+        "isbn": [
+          "9780323478816"
+        ],
+        "evidence_locators": [
+          {
+            "physical_pdf_page": 2,
+            "page_text_sha256": "6565bdc1981d2546348009b201a32c6d43991f90f810c009bde7dfe41ca0fb0a",
+            "native_text_available": true,
+            "render_sha256": "ffabca35af064512ed0fbf862b07ebea63e3bcf1f52a73ced1651e89ec45b6dd",
+            "method": "native text + visual render",
+            "surface": "internal title/copyright/cataloging",
+            "page_dimensions": [
+              0.0,
+              0.0,
+              612.0,
+              783.0
+            ]
+          },
+          {
+            "physical_pdf_page": 3,
+            "page_text_sha256": "68911c97ce59bd5c212b7b4aff024c170c0ed3053fb53d724140ddf299a136e0",
+            "native_text_available": true,
+            "render_sha256": "f68d36f37a5d877ffd68b3a3b7ac552ffa43c6598382586d8f141a6eb9a56d47",
+            "method": "native text + visual render",
+            "surface": "internal title/copyright/cataloging",
+            "page_dimensions": [
+              0.0,
+              0.0,
+              612.0,
+              783.0
+            ]
+          }
+        ]
+      }
+    },
+    "identity_status": "verified",
+    "publication_year": 2018,
+    "source_map_state": "unmapped",
+    "logical_source_id": "costanzo-physiology",
+    "source_map_version": 1,
+    "promoted_staging_version": 4,
+    "promoted_certificate_sha256": "0ac855a3aec5c8841bc3bd5df0d38dc9011dcfe111bc08400d94ea02e67811b8"
+  },
+  "expected_after_business_sha256": "10ab5c367af754294d8496dbfb223d3919e88684f7ab1aa20d3955f69456a00e",
+  "rollback": {
+    "expected_after_business_sha256": "10ab5c367af754294d8496dbfb223d3919e88684f7ab1aa20d3955f69456a00e",
+    "require_recorded_server_updated_at": true,
+    "restore_identity_fields": {
+      "edition": "6",
+      "identity_status": "verify_from_source",
+      "publication_year": null
+    },
+    "restore_metadata_preimage": {
+      "source_map_milestone_audit": {
+        "counts": {
+          "mapped": 863,
+          "anchored": 862,
+          "conflicts": 0,
+          "corpus_ready": false,
+          "deep_anchored": 852,
+          "runtime_nodes": 0,
+          "total_toc_items": null,
+          "source_map_state": "REVIEW_REQUIRED",
+          "logical_source_id": "costanzo-physiology",
+          "observed_candidates": 881,
+          "unresolved_observed": 19,
+          "unclassified_outline_items": 18
+        },
+        "audit_id": "source-map-audit-2026-09-24-1221Z",
+        "report_url": "https://drive.google.com/file/d/19ELa1jgV-Gj-7CpC-ApuTU-Oua7VakIR/view?usp=drivesdk",
+        "audit_state": "REVIEW_REQUIRED",
+        "observed_at": "2026-09-24T12:21:18.592022+00:00",
+        "recorded_at": "2026-09-24T12:48:45.362976+00:00",
+        "artifact_url": "https://drive.google.com/file/d/1JfDjIQPjg17ZW5lpGBZUExJUpWuOWDQz/view?usp=drivesdk",
+        "corpus_ready": false,
+        "sol_review_url": "https://github.com/dnma28/medical-learning-system/issues/97",
+        "source_gap_ids": [],
+        "total_toc_items": null,
+        "runtime_import_state": "BLOCKED_PENDING_SOURCE_AND_CONTRACT_REVIEW",
+        "total_toc_items_status": "REVIEW_REQUIRED",
+        "source_map_runtime_nodes": 0
+      }
+    },
+    "stop_on_concurrent_change": true
+  },
+  "catalog_patch": null
+}
