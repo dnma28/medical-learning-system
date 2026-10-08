@@ -142,7 +142,10 @@ it. A code change requires fresh review and owner tree binding.
 After a complete consistent preimage validation, the caller claims only NEW key
 `source-map:costanzo-physiology:identity-apply:1cfcf79f:v1-20261008`, bound to the exact
 plan/ZIP/executable tree/owner record, then invokes the unchanged transactional
-executor ONCE. Completed/active key claims fail closed. Production secret names,
+executor ONCE. Under the same transaction advisory lock used by the RPC, ANY
+existing execution-key row (including expired active, released or completed)
+rejects before claim, retaining every old lease/provenance field. The existing
+RPC's reclaim behavior is never used by this route. Production secret names,
 fixed TLS connection target/timeouts and idle autocommit reuse the reviewed
 read-only preflight parameters, on a dedicated NEW connection without that
 preflight's read-only session setting. No grants or RPCs are created.

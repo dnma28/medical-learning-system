@@ -104,7 +104,14 @@ def _execute_once(connection, plan, gate, tree_sha, run_id):
              "plan_sha256": PLAN_SHA256, "zip_sha256": ZIP_SHA256, "reviewed_tree_sha": tree_sha}
     manifest = {"scope": scope, "work_key": WORK_KEY,
                 "owner_gate_comment_id": gate["actual_owner_gate_comment_id"]}
-    with connection.cursor() as cursor:
+    with connection.transaction(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL lock_timeout = '5s'")
+        cursor.execute("SET LOCAL statement_timeout = '30s'")
+        # Serialize with the existing RPC, but NEVER use its expired/released reclaim.
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (WORK_KEY,))
+        cursor.execute("SELECT EXISTS (SELECT 1 FROM public.mls_source_map_work_leases WHERE work_key=%s)", (WORK_KEY,))
+        if cursor.fetchone()[0]:
+            raise ValueError("execution key exists; never reclaim or retry")
         cursor.execute("SELECT public.mls_claim_source_map_work(%s,%s,%s,%s,%s,%s,%s)", (
             WORK_KEY, BOOK, "identity-apply-1cfcf79f-v1-20261008", "github-actions-" + run_id,
             canonical_json_sha256(scope), canonical_json_sha256(manifest), 600,

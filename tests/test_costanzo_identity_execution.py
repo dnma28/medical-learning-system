@@ -124,14 +124,15 @@ def test_fixed_plan_drift_and_decimal_representation_reject_before_lease():
 def test_execution_failure_never_retries_or_completes_lease():
     plan = route.load_plan()
     connection = MagicMock()
-    connection.cursor.return_value.__enter__.return_value.fetchone.return_value = [{"lease_token": "private-token"}]
+    connection.cursor.return_value.__enter__.return_value.fetchone.side_effect = [[False], [{"lease_token": "private-token"}]]
     with patch.object(route, "read_identity_snapshot"), patch.object(route, "_verify_plan"), patch.object(
         route, "apply_identity_correction", side_effect=psycopg.OperationalError("COMMIT uncertain"),
     ) as apply, pytest.raises(psycopg.OperationalError):
         route._execute_once(connection, plan, gate(), TREE, "1")
     assert apply.call_count == 1
     calls = connection.cursor.return_value.__enter__.return_value.execute.call_args_list
-    assert len(calls) == 1 and "mls_claim_source_map_work" in calls[0].args[0]
+    assert sum("mls_claim_source_map_work" in call.args[0] for call in calls) == 1
+    assert all("mls_complete_source_map_work" not in call.args[0] for call in calls)
 
 
 def test_native_execution_receipt_guards_and_completed_lease(database, monkeypatch):  # noqa: F811
@@ -155,7 +156,8 @@ def test_native_execution_receipt_guards_and_completed_lease(database, monkeypat
     assert read_identity_snapshot(connection, book) == after
 
 
-def test_native_completed_key_rejects_before_identity_apply(database, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("prior_status", ["expired", "released", "completed"])
+def test_native_existing_key_rejects_before_identity_apply(database, monkeypatch, prior_status):  # noqa: F811
     connection, book, _ = database
     before = read_identity_snapshot(connection, book)
     plan = make_plan(before)
@@ -164,12 +166,19 @@ def test_native_completed_key_rejects_before_identity_apply(database, monkeypatc
     monkeypatch.setattr(route, "WORK_KEY", "source-map:" + book + ":completed-test")
     lease = connection.execute("SELECT public.mls_claim_source_map_work(%s,%s,'test','test',%s,%s,600)",
                                (route.WORK_KEY, book, "0" * 64, "1" * 64)).fetchone()[0]
-    connection.execute("SELECT public.mls_complete_source_map_work(%s,%s,'synthetic-only',%s)",
-                       (route.WORK_KEY, lease["lease_token"], "2" * 64))
-    with patch.object(route, "apply_identity_correction") as apply, pytest.raises(psycopg.Error, match="already completed"):
+    if prior_status == "completed":
+        connection.execute("SELECT public.mls_complete_source_map_work(%s,%s,'synthetic-only',%s)",
+                           (route.WORK_KEY, lease["lease_token"], "2" * 64))
+    elif prior_status == "released":
+        connection.execute("SELECT public.mls_release_source_map_work(%s,%s)", (route.WORK_KEY, lease["lease_token"]))
+    else:
+        connection.execute("UPDATE public.mls_source_map_work_leases SET lease_expires_at=clock_timestamp()-interval '1 minute' WHERE work_key=%s", (route.WORK_KEY,))
+    lease_before = connection.execute("SELECT to_jsonb(w) FROM public.mls_source_map_work_leases w WHERE work_key=%s", (route.WORK_KEY,)).fetchone()[0]
+    with patch.object(route, "apply_identity_correction") as apply, pytest.raises(ValueError, match="never reclaim"):
         route._execute_once(connection, plan, gate(), TREE, "1")
     apply.assert_not_called()
     assert read_identity_snapshot(connection, book) == before
+    assert connection.execute("SELECT to_jsonb(w) FROM public.mls_source_map_work_leases w WHERE work_key=%s", (route.WORK_KEY,)).fetchone()[0] == lease_before
 
 
 def test_activation_workflow_has_no_pr_dispatch_or_rerun_write_route():
