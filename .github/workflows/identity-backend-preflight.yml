@@ -1,0 +1,34 @@
+name: Identity backend connection preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/identity-backend-preflight.yml
+      - src/medical_learning_system/identity_backend_preflight.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-backend-preflight
+  cancel-in-progress: false
+
+jobs:
+  read-only-connection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install existing PostgreSQL driver extra
+        run: pip install -e '.[postgres]'
+      - name: Read complete one-book snapshot through backend connection
+        env:
+          MLS_SUPABASE_URL: ${{ secrets.MLS_SUPABASE_URL }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: python -m medical_learning_system.identity_backend_preflight
