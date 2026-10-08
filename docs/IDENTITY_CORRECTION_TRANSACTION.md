@@ -12,6 +12,28 @@ optional `postgres` extra pins the driver. Use a dedicated idle connection with
 Existing database privileges/RLS apply. No new grant or SECURITY DEFINER bypass
 is introduced. Never pass a production credential into a client or Git artifact.
 
+### Backend connection preflight
+
+`identity-backend-preflight.yml` reuses the existing `MLS_SUPABASE_URL` and
+`SUPABASE_DB_PASSWORD` GitHub Actions secrets and existing Session pooler target.
+Only the backend step receives credentials. It validates the expected project,
+uses TLS, a bounded connection/statement timeout and an idle autocommit psycopg
+connection, then sets session read-only and calls `read_identity_snapshot` for
+Costanzo. Logs contain only canonical hashes/counts, never full source rows,
+staging proposals, passwords or a credential-bearing DSN. Connection failures
+print the exception class only.
+
+The workflow runs on reviewed configuration changes merged to main or manual
+dispatch targeting main. Its job rejects other refs and checks out the exact
+event commit without persisting checkout credentials. It does not run on pull
+requests and never calls apply/rollback, writes
+identity, claims a work lease or creates a public RPC. Its success proves the
+backend can connect and read the complete snapshot at that run; it does not
+provide a credential to a ChatGPT session or authorize an identity correction.
+An actual apply caller still needs its exact reviewed execution route, plan and
+owner gate. Do not repurpose the preflight into raw SQL writes or export secrets
+to bypass that boundary.
+
 One invocation has exactly one logical book and an exact approved plan digest.
 Approval parameters are process bindings, not an authentication mechanism or
 source-truth proof. Backend privilege alone does not satisfy the review/owner gate.
