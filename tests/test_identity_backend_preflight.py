@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 psycopg = pytest.importorskip("psycopg")
 
@@ -11,6 +13,22 @@ from test_postgres_identity_correction import database  # noqa: F401
 
 from medical_learning_system import identity_backend_preflight as preflight
 from medical_learning_system.postgres_identity_correction import read_identity_snapshot
+
+
+def test_workflow_keeps_production_credentials_on_main_backend_step_only():
+    path = Path(__file__).resolve().parents[1] / ".github/workflows/identity-backend-preflight.yml"
+    workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+    assert set(workflow["on"]) == {"push", "workflow_dispatch"}
+    assert workflow["permissions"] == {"contents": "read"}
+    assert "env" not in workflow
+    job = workflow["jobs"]["read-only-connection"]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    assert "env" not in job
+    checkout = job["steps"][0]
+    assert checkout["with"] == {"ref": "${{ github.sha }}", "persist-credentials": "false"}
+    secret_steps = [step for step in job["steps"] if "env" in step]
+    assert len(secret_steps) == 1
+    assert secret_steps[0]["run"] == "python -m medical_learning_system.identity_backend_preflight"
 
 
 @pytest.mark.parametrize("url", [

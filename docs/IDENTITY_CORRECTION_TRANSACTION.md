@@ -24,7 +24,9 @@ staging proposals, passwords or a credential-bearing DSN. Connection failures
 print the exception class only.
 
 The workflow runs on reviewed configuration changes merged to main or manual
-dispatch. It does not run on pull requests and never calls apply/rollback, writes
+dispatch targeting main. Its job rejects other refs and checks out the exact
+event commit without persisting checkout credentials. It does not run on pull
+requests and never calls apply/rollback, writes
 identity, claims a work lease or creates a public RPC. Its success proves the
 backend can connect and read the complete snapshot at that run; it does not
 provide a credential to a ChatGPT session or authorize an identity correction.
