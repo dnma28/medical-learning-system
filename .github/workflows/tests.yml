@@ -29,6 +29,15 @@ jobs:
         run: npx --yes supabase@2.117.0 start
       - name: Apply complete local migration chain
         run: npx --yes supabase@2.117.0 db reset --local
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test one-book identity transactions on isolated Postgres
+        env:
+          MLS_TEST_POSTGRES_DSN: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          pip install -e '.[dev,postgres]'
+          pytest -q tests/test_postgres_identity_correction.py
       - name: Run Source Map promotion contract twice with rollback
         shell: bash
         run: |
