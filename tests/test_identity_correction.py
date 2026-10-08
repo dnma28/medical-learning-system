@@ -255,3 +255,18 @@ def test_scoped_catalog_patch_preserves_non_identity_fields():
         "publication_year",
         "identity_status",
     }
+
+
+def test_prepare_identity_correction_rejects_non_policy_namespace():
+    before = logical_row()
+    with pytest.raises(ValueError, match="reviewed policy namespace"):
+        prepare_identity_correction(
+            logical_row=before,
+            expected_before_sha256=canonical_json_sha256(before),
+            identity_patch={"identity_status": "verified"},
+            metadata_value={"status": "reviewed"},
+            physical_sources=[],
+            staging_rows=[],
+            certificate_rows=[],
+            metadata_namespace="unreviewed_namespace",
+        )

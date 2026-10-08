@@ -163,6 +163,8 @@ def prepare_identity_correction(
         raise ValueError("metadata_value must be an object")
     if not isinstance(metadata_namespace, str) or not metadata_namespace.strip():
         raise ValueError("metadata_namespace must be a non-empty string")
+    if metadata_namespace != PROVENANCE_NAMESPACE:
+        raise ValueError("metadata_namespace must match the reviewed policy namespace")
 
     logical_source_id = logical_row.get("logical_source_id")
     if not isinstance(logical_source_id, str) or not logical_source_id:
