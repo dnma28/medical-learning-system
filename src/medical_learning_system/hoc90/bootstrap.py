@@ -29,6 +29,7 @@ class BootstrapPlan(BaseModel):
     open_error_ids: list[str] = Field(default_factory=list)
     resume_question_id: str | None = None
     resume_hint_level: int = 0
+    resume_branch: str | None = None
     reason: str
 
 
@@ -58,6 +59,8 @@ def build_bootstrap_plan(
             source_spine=refs,
             resume_question_id=checkpoint.question_id if checkpoint else None,
             resume_hint_level=checkpoint.hint_level if checkpoint else 0,
+            resume_branch=checkpoint.current_branch if checkpoint else None,
+            open_error_ids=list(checkpoint.open_error_ids) if checkpoint else [],
             reason=(
                 "Resume the unfinished HỌC90 session before creating a new session."
             ),

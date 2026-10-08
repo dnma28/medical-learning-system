@@ -1,4 +1,8 @@
+from copy import deepcopy
 from datetime import datetime, timezone
+
+import pytest
+from pydantic import ValidationError
 
 from medical_learning_system.hoc90.session import (
     Hoc90Session,
@@ -156,6 +160,99 @@ def make_session():
             SessionStage(name="transfer", minutes=25, objective="Apply"),
         ],
     )
+
+
+def historical_session_row(status="active"):
+    row = make_session().start().model_dump(mode="json")
+    row["status"] = status
+    for stage in row["stages"]:
+        stage.pop("objective")
+    row["source_spine"] = [{
+        "logical_source_id": "synthetic-book",
+        "source_id": "synthetic-physical",
+        "chapter": "2", "edition": "15e", "language": "vi",
+        "provider_file_id": "synthetic-provider-file",
+    }]
+    row["checkpoint"] = {
+        "hint_level": 1,
+        "current_branch": "retest-selectivity",
+        "open_error_ids": ["observed-error-1"],
+    }
+    return row
+
+
+@pytest.mark.parametrize("status", ["active", "paused", "completed", "abandoned"])
+def test_persisted_session_load_preserves_unknown_goals_and_provenance(status):
+    client = FakeClient()
+    store = SupabaseLearningStateStore(client)
+    row = historical_session_row(status)
+    client.tables[store.SESSIONS] = [row]
+    before = deepcopy(client.tables)
+
+    loaded = store.get_session(row["session_id"])
+
+    assert loaded is not None
+    assert loaded.is_90_minutes()
+    assert all(stage.objective is None for stage in loaded.stages)
+    ref = loaded.primary_source_ref().model_dump(mode="json")
+    for key, value in row["source_spine"][0].items():
+        assert ref[key] == value
+    assert ref["source_map_node_id"] is None
+    assert ref["source_anchor"] == {}
+    assert loaded.checkpoint.open_error_ids == ["observed-error-1"]
+    assert loaded.checkpoint.current_branch == "retest-selectivity"
+    assert client.tables == before
+
+
+@pytest.mark.parametrize("status", ["active", "paused"])
+def test_resumable_historical_session_roundtrip_retains_checkpoint_and_provenance(status):
+    client = FakeClient()
+    store = SupabaseLearningStateStore(client)
+    row = historical_session_row(status)
+    client.tables[store.SESSIONS] = [row]
+
+    loaded = store.load_resumable_session()
+    assert loaded is not None
+    store.save_session(loaded.resume())
+    reloaded = store.get_session(row["session_id"])
+
+    assert reloaded.status == SessionStatus.ACTIVE
+    assert all(stage.objective is None for stage in reloaded.stages)
+    assert reloaded.primary_source_ref() == loaded.primary_source_ref()
+    assert reloaded.checkpoint == loaded.checkpoint
+    assert set(client.tables) == {store.SESSIONS}
+
+
+def test_historical_compatibility_does_not_weaken_new_or_planned_stages():
+    with pytest.raises(ValidationError, match="explicit objective"):
+        SessionStage(name="retrieval", minutes=15)
+    with pytest.raises(ValidationError, match="explicit objective"):
+        Hoc90Session.model_validate(historical_session_row())
+    with pytest.raises(ValidationError, match="explicit objective"):
+        Hoc90Session.from_persisted(historical_session_row("planned"))
+
+
+@pytest.mark.parametrize("field,value", [("minutes", 0), ("objective", {"invalid": True})])
+def test_historical_compatibility_still_validates_stage_fields(field, value):
+    row = historical_session_row()
+    row["stages"][0][field] = value
+    with pytest.raises(ValidationError):
+        Hoc90Session.from_persisted(row)
+
+
+def test_historical_chapter_metadata_does_not_become_an_evidence_anchor():
+    from medical_learning_system.hoc90.source_context import (
+        SourceContextErrorCode,
+        SourceContextUnavailable,
+        SupabaseHoc90SourceContextResolver,
+    )
+
+    client = FakeClient()
+    ref = Hoc90Session.from_persisted(historical_session_row()).primary_source_ref()
+    with pytest.raises(SourceContextUnavailable) as raised:
+        SupabaseHoc90SourceContextResolver(client).resolve(ref)
+    assert raised.value.code == SourceContextErrorCode.INVALID_REFERENCE
+    assert client.tables == {}
 
 
 def test_hoc90_can_pause_and_resume_from_checkpoint():
