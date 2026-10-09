@@ -69,6 +69,20 @@ resulting source SHA-256 is carried into the learning event.
 
 ## Session safety
 
+Persisted active, paused, completed or abandoned sessions may predate stage objectives.
+The backend load path represents absent objectives as `null`; it does not generate a
+goal from the topic or target outcome. New and planned stages still require an explicit
+objective, and all other field validation remains in force. Stored chapter, edition,
+language and provider-file metadata survive pause/resume; they do not establish an
+exact Source Map evidence anchor.
+
+Both START and CONTINUE prefer the existing unfinished session. The resume plan returns
+its checkpoint question, hint level, current branch and open error IDs. An already
+active session is read without rewriting it; resuming a paused session retains the
+existing checkpoint. This compatibility path does not append learner events, increase
+mastery, certify source coverage or fill missing textbook content. Source context still
+fails closed when the physical source or Source Map node is missing.
+
 Preparing an interaction:
 
 - refuses to overwrite another pending DeepTutor interaction;

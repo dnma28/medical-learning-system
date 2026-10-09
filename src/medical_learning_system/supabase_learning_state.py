@@ -170,7 +170,7 @@ class SupabaseLearningStateStore:
             .execute()
         )
         rows = _data(response)
-        return Hoc90Session.model_validate(rows[0]) if rows else None
+        return Hoc90Session.from_persisted(rows[0]) if rows else None
 
     def _latest_session(self, status: SessionStatus) -> Hoc90Session | None:
         response = (
@@ -182,7 +182,7 @@ class SupabaseLearningStateStore:
             .execute()
         )
         rows = _data(response)
-        return Hoc90Session.model_validate(rows[0]) if rows else None
+        return Hoc90Session.from_persisted(rows[0]) if rows else None
 
     def append_event(self, event: LearningEvent) -> LearningEvent:
         row = {

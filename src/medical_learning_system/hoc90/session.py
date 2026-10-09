@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 
 from ..source_map import LearningValue, SourceMapNode
 
@@ -41,7 +41,13 @@ class LearningEventType(str, Enum):
 class SessionStage(BaseModel):
     name: str
     minutes: int = Field(gt=0)
-    objective: str
+    objective: str | None = None
+
+    @model_validator(mode="after")
+    def require_objective(self, info: ValidationInfo) -> SessionStage:
+        if self.objective is None and not (info.context or {}).get("persisted_session"):
+            raise ValueError("New session stages require an explicit objective")
+        return self
 
 
 class SourceSpineRef(BaseModel):
@@ -51,6 +57,10 @@ class SourceSpineRef(BaseModel):
     while source_id and source_anchor retain exact physical provenance when
     known. Legacy sessions may still store simple strings in source_spine.
     """
+
+    # Preserve stored chapter/edition/provider metadata during pause/resume.
+    # Extra provenance never substitutes for an exact validated evidence anchor.
+    model_config = ConfigDict(extra="allow")
 
     logical_source_id: str = Field(min_length=1)
     source_map_node_id: str | None = None
@@ -140,6 +150,12 @@ class Hoc90Session(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     updated_at: datetime = Field(default_factory=_utcnow)
+
+    @classmethod
+    def from_persisted(cls, row: dict[str, Any]) -> Hoc90Session:
+        """Load historical running/closed stages without inventing missing goals."""
+        historical = row.get("status") in {"active", "paused", "completed", "abandoned"}
+        return cls.model_validate(row, context={"persisted_session": historical})
 
     @property
     def total_minutes(self) -> int:

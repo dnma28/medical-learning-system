@@ -103,6 +103,32 @@ def test_continue_resumes_existing_active_session_without_rewrite():
     assert store.saved == []
 
 
+@pytest.mark.parametrize("command", [Hoc90Command.START, Hoc90Command.CONTINUE])
+@pytest.mark.parametrize("status", [SessionStatus.ACTIVE, SessionStatus.PAUSED])
+def test_historical_resume_returns_existing_branch_errors_and_unknown_goals(command, status):
+    row = session(status).model_dump(mode="json")
+    row["stages"][0].pop("objective")
+    row["checkpoint"].update({
+        "question_id": "question-existing", "hint_level": 2,
+        "current_branch": "repair-existing", "open_error_ids": ["error-existing"],
+    })
+    existing = Hoc90Session.from_persisted(row)
+    store = Store(resumable=existing, active_blueprint=blueprint("different-position"))
+
+    result = Hoc90RuntimeService(store).bootstrap(command)
+
+    assert result.plan.mode == BootstrapMode.RESUME
+    assert result.plan.session_id == existing.session_id
+    assert result.plan.resume_question_id == "question-existing"
+    assert result.plan.resume_hint_level == 2
+    assert result.plan.resume_branch == "repair-existing"
+    assert result.plan.open_error_ids == ["error-existing"]
+    assert result.plan.source_spine == [existing.primary_source_ref()]
+    assert result.session.stages[0].objective is None
+    assert result.session.checkpoint == existing.checkpoint
+    assert len(store.saved) == (1 if status == SessionStatus.PAUSED else 0)
+
+
 def test_continue_without_resumable_session_does_not_create_one():
     store = Store(active_blueprint=blueprint())
 
