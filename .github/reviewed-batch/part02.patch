@@ -1,0 +1,31 @@
+diff --git a/src/medical_learning_system/hoc90/__init__.py b/src/medical_learning_system/hoc90/__init__.py
+index fd241db..a85c4ff 100644
+--- a/src/medical_learning_system/hoc90/__init__.py
++++ b/src/medical_learning_system/hoc90/__init__.py
+@@ -10,6 +10,13 @@ from .bootstrap import (
+     Hoc90Command,
+     build_bootstrap_plan,
+ )
++from .runtime_service import (
++    Hoc90BootstrapError,
++    Hoc90BootstrapResult,
++    Hoc90RuntimeService,
++    Hoc90TurnResolution,
++    check_hoc90_readiness,
++)
+ from .session import (
+     Hoc90Session,
+     LearningEvent,
+@@ -39,10 +46,6 @@ __all__ = [
+     "Hoc90BootstrapError",
+     "Hoc90BootstrapResult",
+     "Hoc90RuntimeService",
++    "Hoc90TurnResolution",
++    "check_hoc90_readiness",
+ ]
+-
+-from .runtime_service import (
+-    Hoc90BootstrapError,
+-    Hoc90BootstrapResult,
+-    Hoc90RuntimeService,
+-)
