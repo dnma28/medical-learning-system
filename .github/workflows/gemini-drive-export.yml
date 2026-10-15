@@ -1,0 +1,89 @@
+name: Gemini Drive Export
+
+on:
+  push:
+    branches:
+      - chore/gemini-drive-export-20261015
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact canonical snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ef35f376b7fde1fdd72047af3b27775848f69ad9
+          fetch-depth: 1
+
+      - name: Build Gemini workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p export/medical-learning-system
+          git archive --format=tar HEAD | tar -x -C export/medical-learning-system
+          printf '%s\n' 'ef35f376b7fde1fdd72047af3b27775848f69ad9' > export/BASE_GITHUB_SHA.txt
+          cat > export/GEMINI_SYNC_README.md <<'EOF'
+          # Gemini code workspace — medical-learning-system
+
+          Canonical repository: `dnma28/medical-learning-system`
+          Canonical branch: `main`
+          Base commit: `ef35f376b7fde1fdd72047af3b27775848f69ad9`
+
+          ## Authority rule
+          This Drive export is a working mirror for Gemini. GitHub remains the canonical source of code. Do not treat Drive edits as production changes until they are diffed against the base SHA, tested, reviewed, and merged by PR.
+
+          ## Required editing protocol for Gemini
+          1. Read `medical-learning-system/AGENTS.md` first.
+          2. Read the relevant docs and affected code path before changing anything.
+          3. Keep changes minimal (Ponytail mode); do not add secrets, API keys, textbook binaries, parser output, or local RAG data.
+          4. Do not rewrite unrelated files.
+          5. For every change, record changed paths and rationale in `GEMINI_CHANGE_MANIFEST.md`.
+          6. When finished, provide the complete modified files and a unified diff against the base snapshot when possible.
+          7. GitHub promotion path remains: branch -> tests -> PR -> independent review -> merge.
+
+          ## Project role split
+          - Google Drive: textbook/source material + this Gemini working mirror.
+          - GitHub: canonical code, schemas, CI, migrations, tests and technical docs.
+          - Supabase: runtime learning state.
+          - Gemini: secondary code/document worker using this mirror.
+          - ChatGPT: live GitHub/Drive/Supabase orchestration and final integration gate.
+          EOF
+
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib, json
+          from pathlib import Path
+
+          root = Path('export/medical-learning-system')
+          items = []
+          for p in sorted(root.rglob('*')):
+              if not p.is_file():
+                  continue
+              data = p.read_bytes()
+              items.append({
+                  'path': p.relative_to(root).as_posix(),
+                  'size': len(data),
+                  'sha256': hashlib.sha256(data).hexdigest(),
+              })
+          payload = {
+              'repository': 'dnma28/medical-learning-system',
+              'branch': 'main',
+              'base_commit': 'ef35f376b7fde1fdd72047af3b27775848f69ad9',
+              'file_count': len(items),
+              'files': items,
+          }
+          Path('export/repo_manifest.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('export/repo_tree.txt').write_text('\n'.join(x['path'] for x in items) + '\n', encoding='utf-8')
+          PY
+
+      - name: Upload Gemini workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: medical-learning-system-gemini-workspace-ef35f376
+          path: export/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
