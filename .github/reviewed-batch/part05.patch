@@ -1,0 +1,229 @@
+diff --git a/src/medical_learning_system/supabase_storage.py b/src/medical_learning_system/supabase_storage.py
+index 02566b5..1d25798 100644
+--- a/src/medical_learning_system/supabase_storage.py
++++ b/src/medical_learning_system/supabase_storage.py
+@@ -34,6 +34,17 @@ _PROCESSED = {
+ }
+ 
+ 
++def supabase_data(response: Any) -> list[dict[str, Any]]:
++    """Normalize a PostgREST/Supabase response or dict fixture into row dicts."""
++    data = getattr(response, "data", None)
++    if data is None and isinstance(response, dict):
++        data = response.get("data")
++    return list(data or [])
++
++
++_data = supabase_data
++
++
+ def build_supabase_client(
+     *,
+     url: str | None = None,
+@@ -437,10 +448,3 @@ def _evidence_from_row(row: dict[str, Any]) -> SourceEvidenceBlock:
+         parser_version=row.get("parser_version"),
+         content_sha256=row["content_sha256"],
+     )
+-
+-
+-def _data(response: Any) -> list[dict[str, Any]]:
+-    data = getattr(response, "data", None)
+-    if data is None and isinstance(response, dict):
+-        data = response.get("data")
+-    return list(data or [])
+diff --git a/tests/test_hoc90_runtime_service.py b/tests/test_hoc90_runtime_service.py
+index c97c687..9aa3740 100644
+--- a/tests/test_hoc90_runtime_service.py
++++ b/tests/test_hoc90_runtime_service.py
+@@ -1,5 +1,11 @@
++from types import SimpleNamespace
++
+ import pytest
+ 
++from medical_learning_system.hoc90 import (
++    Hoc90TurnResolution,
++    check_hoc90_readiness,
++)
+ from medical_learning_system.hoc90.blueprint import (
+     BlueprintStatus,
+     Hoc90Blueprint,
+@@ -16,6 +22,14 @@ from medical_learning_system.hoc90.session import (
+     SessionStatus,
+     SourceSpineRef,
+ )
++from medical_learning_system.hoc90.source_context import (
++    ResolvedSourceContext,
++    SourceContextErrorCode,
++    SourceContextUnavailable,
++)
++from medical_learning_system.learning.router import AdaptiveAction, QualityMode
++from medical_learning_system.source_map import LearningValue
++from medical_learning_system.supabase_storage import supabase_data
+ 
+ 
+ def source_ref() -> SourceSpineRef:
+@@ -59,14 +73,28 @@ def session(status=SessionStatus.PAUSED) -> Hoc90Session:
+ 
+ 
+ class Store:
+-    def __init__(self, *, resumable=None, active_blueprint=None):
++    def __init__(
++        self,
++        *,
++        resumable=None,
++        active_blueprint=None,
++        due_concepts=None,
++        open_errors=None,
++    ):
+         self.resumable = resumable
+         self.active_blueprint = active_blueprint
++        self.due_concepts = list(due_concepts or [])
++        self.open_errors = list(open_errors or [])
+         self.saved = []
+ 
+     def load_resumable_session(self):
+         return self.resumable
+ 
++    def get_session(self, session_id):
++        if self.resumable and self.resumable.session_id == session_id:
++            return self.resumable
++        return None
++
+     def get_active_blueprint(self):
+         return self.active_blueprint
+ 
+@@ -75,6 +103,32 @@ class Store:
+         self.resumable = value
+         return value
+ 
++    def list_due_retrieval_concept_ids(self, *, as_of=None, limit=20):
++        return self.due_concepts[:limit]
++
++    def list_open_errors(self, *, concept_id=None):
++        return [
++            SimpleNamespace(id=err_id, concept_id=concept_id)
++            for err_id in self.open_errors
++        ]
++
++
++class StaticResolver:
++    def __init__(self, *, passages=None, error=None):
++        self.passages = list(passages or ["Verified Costanzo ICF/ECF passage."])
++        self.error = error
++
++    def resolve(self, ref: SourceSpineRef) -> ResolvedSourceContext:
++        if self.error is not None:
++            raise self.error
++        return ResolvedSourceContext(
++            source_ref=ref,
++            evidence_ids=["ev-costanzo-1"],
++            passages=self.passages,
++            page_start=8,
++            page_end=8,
++        )
++
+ 
+ def test_start_resumes_existing_paused_session_before_creating_anything():
+     store = Store(resumable=session(), active_blueprint=blueprint())
+@@ -221,3 +275,101 @@ def test_existing_paused_session_wins_over_new_start_approval_mismatch():
+     assert result.resumed is True
+     assert result.session is not None
+     assert result.session.status == SessionStatus.ACTIVE
++
++
++def test_resolve_turn_hydrates_due_retrieval_at_session_start():
++    bp = blueprint()
++    store = Store(
++        active_blueprint=bp,
++        due_concepts=["osmolarity-vs-tonicity"],
++    )
++    service = Hoc90RuntimeService(store)
++    boot = service.bootstrap(Hoc90Command.START)
++
++    turn = service.resolve_turn(
++        session=boot.session,
++        source_context_resolver=StaticResolver(),
++    )
++
++    assert isinstance(turn, Hoc90TurnResolution)
++    assert turn.routing_context.session_start is True
++    assert turn.decision.action == AdaptiveAction.START_RETRIEVAL
++    assert turn.decision.target_ids == ["osmolarity-vs-tonicity"]
++    assert turn.source_context is not None
++    assert turn.source_context.passages == ["Verified Costanzo ICF/ECF passage."]
++
++
++def test_resolve_turn_routes_source_gap_to_source_recovery_fail_closed():
++    active = session(SessionStatus.ACTIVE)
++    store = Store(resumable=active)
++    resolver = StaticResolver(
++        error=SourceContextUnavailable(
++            "No promoted evidence link exists for node.",
++            code=SourceContextErrorCode.SOURCE_GAP,
++        )
++    )
++
++    turn = Hoc90RuntimeService(store).resolve_turn(
++        session_id="session-1",
++        source_context_resolver=resolver,
++    )
++
++    assert turn.source_context is None
++    assert turn.source_error_code == SourceContextErrorCode.SOURCE_GAP
++    assert turn.routing_context.source_gap is True
++    assert turn.decision.action == AdaptiveAction.SOURCE_RECOVERY
++    assert turn.decision.quality_mode == QualityMode.DEEP
++
++
++def test_resolve_turn_merges_checkpoint_and_store_open_errors():
++    active = session(SessionStatus.ACTIVE)
++    active = active.pause(
++        SessionCheckpoint(
++            concept_id="starling-forces",
++            source_ref=source_ref(),
++            open_error_ids=["err-checkpoint"],
++        )
++    ).resume()
++    store = Store(resumable=active, open_errors=["err-store", "err-checkpoint"])
++
++    turn = Hoc90RuntimeService(store).resolve_turn(
++        source_context_resolver=StaticResolver(),
++    )
++
++    assert turn.routing_context.open_error_ids == ["err-checkpoint", "err-store"]
++    assert turn.decision.action == AdaptiveAction.ERROR_REMEDIATION
++    assert turn.decision.target_ids == ["err-checkpoint", "err-store"]
++
++
++def test_resolve_turn_enforces_freshness_gate_for_current_clinical_check():
++    clinical_ref = SourceSpineRef(
++        logical_source_id="katzung-basic-clinical-pharmacology",
++        source_map_node_id="katzung:ch10:dosing",
++        source_id="katzung-physical",
++        source_anchor={"pdf_page": 150},
++        learning_value=LearningValue.CURRENT_CLINICAL_CHECK,
++        freshness_required=True,
++    )
++    clinical_session = session(SessionStatus.ACTIVE).pause(
++        SessionCheckpoint(source_ref=clinical_ref)
++    ).resume()
++    store = Store(resumable=clinical_session)
++
++    turn = Hoc90RuntimeService(store).resolve_turn(
++        source_context_resolver=StaticResolver(),
++        freshness_verified=False,
++    )
++
++    assert turn.decision.action == AdaptiveAction.VERIFY_CURRENT_EVIDENCE
++    assert turn.decision.quality_mode == QualityMode.CRITICAL
++
++
++def test_supabase_data_normalizes_object_and_dict_responses():
++    obj_resp = SimpleNamespace(data=[{"id": "1"}])
++    dict_resp = {"data": [{"id": "2"}]}
++    empty_resp = SimpleNamespace(data=None)
++
++    assert supabase_data(obj_resp) == [{"id": "1"}]
++    assert supabase_data(dict_resp) == [{"id": "2"}]
++    assert supabase_data(empty_resp) == []
++    assert callable(check_hoc90_readiness)
