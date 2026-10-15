@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from ..supabase_storage import supabase_data as _data
 from ..evidence_store import SourceEvidenceBlock
 
 
@@ -132,12 +133,6 @@ class SupabaseRetrievalStore:
             for row in _data(response)
         ]
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])
 
 
 def _legacy_structure_node_id(row: dict[str, Any]) -> str | None:

@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .supabase_storage import supabase_data as _data
 from .coverage import StructureKind, StructureNode
 from .drive_source import GoogleDriveSourceFetcher
 from .evidence_alignment import (
@@ -25,12 +26,6 @@ from .supabase_storage import SupabaseMedicalStore
 
 COMPILER_VERSION = "source-map-evidence-v3"
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])
 
 
 class SourceMapEvidenceMigrationState(str, Enum):

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .supabase_storage import supabase_data as _data
 from .knowledge_graph.claim_audit import (
     ClaimAuditRecord,
     ContentFidelityState,
@@ -106,9 +107,3 @@ def _audit_from_row(row: dict[str, Any]) -> ClaimAuditRecord:
         notes=list(row.get("notes") or []),
     )
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])

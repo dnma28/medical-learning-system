@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .supabase_storage import supabase_data as _data
 from .evidence_alignment import (
     AlignmentMethod,
     EvidenceStructureLink,
@@ -77,9 +78,3 @@ def _row_to_link(row: dict[str, Any]) -> EvidenceStructureLink:
         confidence=float(row["confidence"]),
     )
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])

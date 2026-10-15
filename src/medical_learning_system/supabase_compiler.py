@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .supabase_storage import supabase_data as _data
 from .compiler import (
     CompilationManifest,
     CompilationStatus,
@@ -145,9 +146,3 @@ def _manifest_from_row(row: dict[str, Any]) -> CompilationManifest:
         created_at=datetime.fromisoformat(row["created_at"]),
     )
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])

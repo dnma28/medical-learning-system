@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .supabase_storage import supabase_data as _data
 from .compilation_planner import (
     CompilationJob,
     CompilationTier,
@@ -53,9 +54,3 @@ def _job_from_row(row: dict[str, Any]) -> CompilationJob:
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])

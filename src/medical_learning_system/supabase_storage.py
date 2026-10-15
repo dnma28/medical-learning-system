@@ -34,6 +34,17 @@ _PROCESSED = {
 }
 
 
+def supabase_data(response: Any) -> list[dict[str, Any]]:
+    """Normalize a PostgREST/Supabase response or dict fixture into row dicts."""
+    data = getattr(response, "data", None)
+    if data is None and isinstance(response, dict):
+        data = response.get("data")
+    return list(data or [])
+
+
+_data = supabase_data
+
+
 def build_supabase_client(
     *,
     url: str | None = None,
@@ -437,10 +448,3 @@ def _evidence_from_row(row: dict[str, Any]) -> SourceEvidenceBlock:
         parser_version=row.get("parser_version"),
         content_sha256=row["content_sha256"],
     )
-
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])
