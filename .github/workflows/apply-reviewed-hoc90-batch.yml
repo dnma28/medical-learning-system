@@ -1,0 +1,91 @@
+name: apply-reviewed-hoc90-batch
+
+on:
+  push:
+    branches:
+      - refactor/hoc90-runtime-batch1-2-20261015
+    paths:
+      - .github/workflows/apply-reviewed-hoc90-batch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/hoc90-runtime-batch1-2-20261015
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Reconstruct reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .github/reviewed-batch/part01.patch \
+            .github/reviewed-batch/part02.patch \
+            .github/reviewed-batch/part03a.patch \
+            .github/reviewed-batch/part03b.patch \
+            .github/reviewed-batch/part03c.patch \
+            .github/reviewed-batch/part04a.patch \
+            .github/reviewed-batch/part04b.patch \
+            .github/reviewed-batch/part05.patch \
+            > /tmp/reviewed.patch
+          echo '902aa680af7018cd3812db2394f271a5b7a7686ab1dbf078c95c2167848fb2b3  /tmp/reviewed.patch' | sha256sum -c -
+          git apply --check /tmp/reviewed.patch
+          git apply /tmp/reviewed.patch
+
+      - name: Remove temporary staging files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/reviewed-batch
+          rm -f .github/workflows/apply-reviewed-hoc90-batch.yml
+
+      - name: Install canonical test dependencies
+        run: pip install -e '.[dev,fsrs,pdf-native]'
+
+      - name: Run full unit test suite
+        run: pytest -q
+
+      - name: Verify final diff scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only ef35f376b7fde1fdd72047af3b27775848f69ad9 -- \
+            | sort > /tmp/actual.txt
+          cat > /tmp/expected.txt <<'EOF'
+          src/medical_learning_system/cli/hoc90_deeptutor.py
+          src/medical_learning_system/hoc90/__init__.py
+          src/medical_learning_system/hoc90/runtime_service.py
+          src/medical_learning_system/hoc90/source_context.py
+          src/medical_learning_system/retrieval/vector_store.py
+          src/medical_learning_system/source_map_evidence.py
+          src/medical_learning_system/supabase_alignment.py
+          src/medical_learning_system/supabase_claim_audit.py
+          src/medical_learning_system/supabase_compiler.py
+          src/medical_learning_system/supabase_learning_state.py
+          src/medical_learning_system/supabase_queue.py
+          src/medical_learning_system/supabase_relation_audit.py
+          src/medical_learning_system/supabase_source_map.py
+          src/medical_learning_system/supabase_storage.py
+          tests/test_hoc90_runtime_service.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/actual.txt
+
+      - name: Commit reviewed implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor(hoc90): centralize turn orchestration and Supabase row parsing'
+          git push origin HEAD:refactor/hoc90-runtime-batch1-2-20261015
