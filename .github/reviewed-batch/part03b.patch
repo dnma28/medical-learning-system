@@ -1,0 +1,176 @@
++            decision = active_router.route_next_from_state(
++                routing_context,
++                due_retrieval_provider=self.store,  # type: ignore[arg-type]
++                as_of=as_of,
++                due_limit=due_limit,
++            )
++            if is_session_start and not routing_context.due_retrieval_concept_ids:
++                routing_context = routing_context.model_copy(
++                    update={"due_retrieval_concept_ids": list(decision.target_ids)}
++                    if decision.action.value == "start_retrieval"
++                    else {}
++                )
++        else:
++            decision = active_router.route_next(routing_context)
++
++        return Hoc90TurnResolution(
++            session=active_session,
++            source_ref=source_ref,
++            routing_context=routing_context,
++            decision=decision,
++            source_context=resolved_source,
++            source_error_code=source_error_code,
++            source_error_message=source_error_message,
++        )
++
++    def _resolve_session(
++        self,
++        *,
++        session: Hoc90Session | None,
++        session_id: str | None,
++    ) -> Hoc90Session:
++        if session is not None:
++            return session
++        if session_id is not None:
++            getter = getattr(self.store, "get_session", None)
++            if not callable(getter):
++                raise Hoc90BootstrapError("Runtime store does not support get_session.")
++            found = getter(session_id)
++            if found is None:
++                raise KeyError(f"Unknown HỌC90 session: {session_id}")
++            return found
++        resumable = self.store.load_resumable_session()
++        if resumable is None:
++            raise Hoc90BootstrapError("No active or paused HỌC90 session is available.")
++        return resumable
++
++    def _resolve_open_error_ids(
++        self,
++        *,
++        checkpoint: SessionCheckpoint | None,
++        explicit_error_ids: list[str] | None,
++    ) -> list[str]:
++        if explicit_error_ids is not None:
++            return list(dict.fromkeys(explicit_error_ids))
++        combined: list[str] = list(checkpoint.open_error_ids) if checkpoint else []
++        list_errors = getattr(self.store, "list_open_errors", None)
++        if callable(list_errors):
++            concept_id = checkpoint.concept_id if checkpoint else None
++            for item in list_errors(concept_id=concept_id):
++                err_id = getattr(item, "id", None)
++                if err_id:
++                    combined.append(str(err_id))
++        return list(dict.fromkeys(combined))
++
++
++def check_hoc90_readiness(
++    client: Any,
++    logical_source_id: str | None = None,
++) -> dict[str, object]:
++    """Inspect live Supabase runtime readiness for HỌC90 and optional logical book."""
++    blueprint_rows = _rows(
++        client.table("mls_hoc90_blueprints")
++        .select("lesson_id,status,curriculum_position,updated_at")
++        .eq("status", "active")
++        .limit(1)
++        .execute()
++    )
++    session_rows = _rows(
++        client.table("mls_learning_sessions")
++        .select("session_id,status,topic,updated_at")
++        .in_("status", ["active", "paused"])
++        .order("updated_at", desc=True)
++        .limit(1)
++        .execute()
++    )
++
++    source = None
++    source_map_readiness = None
++    evidence_status = None
++    evidence_migration_history = False
++    current_stage = None
++
++    if logical_source_id:
++        rows = _rows(
++            client.table("mls_logical_sources")
++            .select(
++                "logical_source_id,title,source_map_state,source_map_version,"
++                "promoted_staging_version"
++            )
++            .eq("logical_source_id", logical_source_id)
++            .limit(1)
++            .execute()
++        )
++        source = rows[0] if rows else None
++        if source and source.get("promoted_staging_version") is not None:
++            current_stage = int(source["promoted_staging_version"])
++
++        readiness_response = client.rpc(
++            "mls_source_map_readiness",
++            {"p_logical_source_id": logical_source_id},
++        ).execute()
++        raw_readiness = getattr(readiness_response, "data", None)
++        if isinstance(raw_readiness, dict):
++            source_map_readiness = raw_readiness
++        elif (
++            isinstance(raw_readiness, list)
++            and raw_readiness
++            and isinstance(raw_readiness[0], dict)
++        ):
++            source_map_readiness = raw_readiness[0]
++
++        history_rows = _rows(
++            client.table("mls_source_map_evidence_status")
++            .select(
++                "state,staging_version,legacy_fallback_disabled,"
++                "evidence_blocks,promoted_links"
++            )
++            .eq("logical_source_id", logical_source_id)
++            .eq("legacy_fallback_disabled", True)
++            .execute()
++        )
++        evidence_migration_history = bool(history_rows)
++        if current_stage is not None:
++            evidence_status = next(
++                (
++                    row
++                    for row in history_rows
++                    if int(row.get("staging_version") or -1) == current_stage
++                ),
++                None,
++            )
++
++    if logical_source_id and current_stage is not None:
++        evidence_query = (
++            client.table("mls_source_map_evidence_links")
++            .select("evidence_id", count="exact")
++            .eq("logical_source_id", logical_source_id)
++            .eq("staging_version", current_stage)
++            .eq("status", "promoted")
++            .limit(1)
++            .execute()
++        )
++    elif logical_source_id:
++        evidence_query = (
++            client.table("mls_source_map_evidence_links")
++            .select("evidence_id", count="exact")
++            .eq("logical_source_id", logical_source_id)
++            .eq("status", "promoted")
++            .limit(1)
++            .execute()
++        )
++    else:
++        evidence_query = (
++            client.table("mls_evidence_blocks")
++            .select("evidence_id", count="exact")
++            .limit(1)
++            .execute()
++        )
++
++    evidence_count = getattr(evidence_query, "count", None)
++    if evidence_count is None:
++        evidence_count = len(_rows(evidence_query))
++
++    blockers: list[str] = []
++    if not blueprint_rows:
++        blockers.append("no_active_blueprint")
