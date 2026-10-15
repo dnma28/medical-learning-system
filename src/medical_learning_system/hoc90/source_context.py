@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
+from ..supabase_storage import supabase_data as _data
 from .session import SourceSpineRef
 
 
@@ -35,8 +36,8 @@ class ResolvedSourceContext(BaseModel):
     page_end: int | None = None
 
 
-def _data(response: Any) -> list[dict[str, Any]]:
-    return list(getattr(response, "data", None) or [])
+class SourceContextResolver(Protocol):
+    def resolve(self, source_ref: SourceSpineRef) -> ResolvedSourceContext: ...
 
 
 class SupabaseHoc90SourceContextResolver:

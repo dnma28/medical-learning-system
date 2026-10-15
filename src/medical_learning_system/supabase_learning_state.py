@@ -8,6 +8,7 @@ from .hoc90.session import Hoc90Session, LearningEvent, SessionStatus, SourceSpi
 from .student.models import ConceptMastery, LearnerError
 from .student.spaced_retrieval import FsrsSpacedRetrievalScheduler
 from .student.skills import SkillNode, SkillState
+from .supabase_storage import supabase_data as _data
 
 
 def _utcnow() -> datetime:
@@ -16,10 +17,6 @@ def _utcnow() -> datetime:
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
-
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    return list(getattr(response, "data", None) or [])
 
 
 class SupabaseLearningStateStore:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .supabase_storage import supabase_data as _data
 from .knowledge_graph.relation_audit_ledger import (
     RelationAuditDecisionRecord,
 )
@@ -106,9 +107,3 @@ def _decision_from_row(
         supersedes_decision_id=row.get("supersedes_decision_id"),
     )
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    data = getattr(response, "data", None)
-    if data is None and isinstance(response, dict):
-        data = response.get("data")
-    return list(data or [])

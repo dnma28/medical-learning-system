@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .supabase_storage import supabase_data as _data
 from .source_catalog import CatalogSource, SourceCatalog
 from .source_map import LogicalSourceMap, SourceMapNode
 from .source_map_staging import StagingSourceMap
@@ -11,9 +12,6 @@ from .source_map_staging import StagingSourceMap
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
-def _data(response: Any) -> list[dict[str, Any]]:
-    return list(getattr(response, "data", None) or [])
 
 
 class SupabaseSourceMapStore:

@@ -10,6 +10,10 @@ from medical_learning_system.hoc90.deeptutor_bridge import (
     DeepTutorSubmission,
     Hoc90DeepTutorBridge,
 )
+from medical_learning_system.hoc90.runtime_service import (
+    Hoc90RuntimeService,
+    check_hoc90_readiness,
+)
 from medical_learning_system.hoc90.source_context import (
     SourceContextUnavailable,
     SupabaseHoc90SourceContextResolver,
@@ -20,7 +24,12 @@ from medical_learning_system.learning.router import (
     RoutingDecision,
 )
 from medical_learning_system.supabase_learning_state import SupabaseLearningStateStore
-from medical_learning_system.supabase_storage import build_supabase_client
+from medical_learning_system.supabase_storage import (
+    build_supabase_client,
+    supabase_data as _rows,
+)
+
+_readiness = check_hoc90_readiness
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -36,8 +45,9 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("session_id")
     prepare.add_argument(
         "--action",
-        required=True,
+        required=False,
         choices=[action.value for action in AdaptiveAction],
+        help="Optional explicit route action; if omitted, resolved deterministically via Hoc90RuntimeService.",
     )
     prepare.add_argument("--target-id", action="append", default=[])
     prepare.add_argument("--quiz", action="store_true")
@@ -55,174 +65,62 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _rows(response):
-    return list(getattr(response, "data", None) or [])
-
-
-def _readiness(client, logical_source_id: str | None) -> dict[str, object]:
-    blueprint_rows = _rows(
-        client.table("mls_hoc90_blueprints")
-        .select("lesson_id,status,curriculum_position,updated_at")
-        .eq("status", "active")
-        .limit(1)
-        .execute()
-    )
-    session_rows = _rows(
-        client.table("mls_learning_sessions")
-        .select("session_id,status,topic,updated_at")
-        .in_("status", ["active", "paused"])
-        .order("updated_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-
-    source = None
-    source_map_readiness = None
-    evidence_status = None
-    evidence_migration_history = False
-    current_stage = None
-
-    if logical_source_id:
-        rows = _rows(
-            client.table("mls_logical_sources")
-            .select(
-                "logical_source_id,title,source_map_state,source_map_version,"
-                "promoted_staging_version"
-            )
-            .eq("logical_source_id", logical_source_id)
-            .limit(1)
-            .execute()
-        )
-        source = rows[0] if rows else None
-        if source and source.get("promoted_staging_version") is not None:
-            current_stage = int(source["promoted_staging_version"])
-
-        readiness_response = client.rpc(
-            "mls_source_map_readiness",
-            {"p_logical_source_id": logical_source_id},
-        ).execute()
-        raw_readiness = getattr(readiness_response, "data", None)
-        if isinstance(raw_readiness, dict):
-            source_map_readiness = raw_readiness
-        elif (
-            isinstance(raw_readiness, list)
-            and raw_readiness
-            and isinstance(raw_readiness[0], dict)
-        ):
-            source_map_readiness = raw_readiness[0]
-
-        history_rows = _rows(
-            client.table("mls_source_map_evidence_status")
-            .select(
-                "state,staging_version,legacy_fallback_disabled,"
-                "evidence_blocks,promoted_links"
-            )
-            .eq("logical_source_id", logical_source_id)
-            .eq("legacy_fallback_disabled", True)
-            .execute()
-        )
-        evidence_migration_history = bool(history_rows)
-        if current_stage is not None:
-            evidence_status = next(
-                (
-                    row
-                    for row in history_rows
-                    if int(row.get("staging_version") or -1) == current_stage
-                ),
-                None,
-            )
-
-    if logical_source_id and current_stage is not None:
-        evidence_query = (
-            client.table("mls_source_map_evidence_links")
-            .select("evidence_id", count="exact")
-            .eq("logical_source_id", logical_source_id)
-            .eq("staging_version", current_stage)
-            .eq("status", "promoted")
-            .limit(1)
-            .execute()
-        )
-    elif logical_source_id:
-        evidence_query = (
-            client.table("mls_source_map_evidence_links")
-            .select("evidence_id", count="exact")
-            .eq("logical_source_id", logical_source_id)
-            .eq("status", "promoted")
-            .limit(1)
-            .execute()
-        )
-    else:
-        evidence_query = (
-            client.table("mls_evidence_blocks")
-            .select("evidence_id", count="exact")
-            .limit(1)
-            .execute()
-        )
-
-    evidence_count = getattr(evidence_query, "count", None)
-    if evidence_count is None:
-        evidence_count = len(_rows(evidence_query))
-
-    blockers: list[str] = []
-    if not blueprint_rows:
-        blockers.append("no_active_blueprint")
-    if not session_rows:
-        blockers.append("no_active_or_paused_session")
-    if logical_source_id and (
-        source is None
-        or source_map_readiness is None
-        or source_map_readiness.get("ready_for_hoc90") is not True
-    ):
-        blockers.append("source_map_not_ready_for_hoc90")
-
-    if logical_source_id and evidence_migration_history and evidence_status is None:
-        blockers.append("source_map_evidence_stale")
-    elif evidence_status and evidence_status.get("state") == "review_required":
-        blockers.append("source_map_evidence_review_required")
-    elif evidence_status and evidence_status.get("state") == "stale":
-        blockers.append("source_map_evidence_stale")
-    elif not evidence_count:
-        blockers.append("no_exact_source_map_evidence")
-
-    return {
-        "ready": not blockers,
-        "blockers": blockers,
-        "active_blueprint": blueprint_rows[0] if blueprint_rows else None,
-        "resumable_session": session_rows[0] if session_rows else None,
-        "evidence_blocks": evidence_count,
-        "source_map_evidence_status": evidence_status,
-        "logical_source": source,
-        "source_map_readiness": source_map_readiness,
-    }
-
-
 async def _prepare(args, client) -> dict[str, object]:
     store = SupabaseLearningStateStore(client)
     session = store.get_session(args.session_id)
     if session is None:
         raise SystemExit(f"Unknown HỌC90 session: {args.session_id}")
-    source_ref = session.primary_source_ref()
+    source_ref = (
+        session.checkpoint.source_ref
+        if session.checkpoint is not None and session.checkpoint.source_ref is not None
+        else session.primary_source_ref()
+    )
     if source_ref is None:
         raise SystemExit("Session has no structured primary SourceSpineRef.")
 
-    if args.source_text_file:
-        source_context = [args.source_text_file.read_text(encoding="utf-8")]
-        page = source_ref.source_anchor.get("page_start")
-    else:
-        try:
-            resolved = SupabaseHoc90SourceContextResolver(client).resolve(source_ref)
-        except SourceContextUnavailable as exc:
-            raise SystemExit(f"{exc.code.value}: {exc}") from exc
-        source_context = resolved.passages
-        page = resolved.page_start
+    if args.action is not None:
+        if args.source_text_file:
+            source_context = [args.source_text_file.read_text(encoding="utf-8")]
+            page = source_ref.source_anchor.get("page_start")
+        else:
+            try:
+                resolved = SupabaseHoc90SourceContextResolver(client).resolve(source_ref)
+            except SourceContextUnavailable as exc:
+                raise SystemExit(f"{exc.code.value}: {exc}") from exc
+            source_context = resolved.passages
+            page = resolved.page_start
 
-    decision = RoutingDecision(
-        action=AdaptiveAction(args.action),
-        quality_mode=QualityMode.DEEP,
-        reason="CLI bridge invocation using an already-resolved HỌC90 route.",
-        target_ids=list(args.target_id),
-        return_to_source_spine=source_ref.routing_key,
-    )
+        decision = RoutingDecision(
+            action=AdaptiveAction(args.action),
+            quality_mode=QualityMode.DEEP,
+            reason="CLI bridge invocation using an already-resolved HỌC90 route.",
+            target_ids=list(args.target_id),
+            return_to_source_spine=source_ref.routing_key,
+        )
+    else:
+        resolver = (
+            None
+            if args.source_text_file
+            else SupabaseHoc90SourceContextResolver(client)
+        )
+        turn = Hoc90RuntimeService(store).resolve_turn(
+            session=session,
+            source_context_resolver=resolver,
+        )
+        if args.source_text_file:
+            source_context = [args.source_text_file.read_text(encoding="utf-8")]
+            page = source_ref.source_anchor.get("page_start")
+        else:
+            if turn.source_context is None:
+                code = turn.source_error_code.value if turn.source_error_code else "SOURCE_GAP"
+                raise SystemExit(f"{code}: {turn.source_error_message}")
+            source_context = turn.source_context.passages
+            page = turn.source_context.page_start
+
+        decision = turn.decision
+        if args.target_id:
+            decision = decision.model_copy(update={"target_ids": list(args.target_id)})
+
     reading = DeepTutorReadingInput(
         material_id=source_ref.logical_source_id,
         locator=(int(page) + 1) if isinstance(page, int) and page >= 0 else 1,
