@@ -1,3 +1,9 @@
+from fnmatch import fnmatchcase
+from pathlib import Path
+
+import pytest
+import yaml
+
 from medical_learning_system.cli.hoc90_deeptutor import _readiness
 
 
@@ -144,6 +150,47 @@ def test_readiness_accepts_partial_migration_for_existing_exact_pilot():
     assert result["ready"] is True
     assert result["blockers"] == []
     assert result["source_map_evidence_status"]["state"] == "partial"
+
+
+@pytest.mark.parametrize("migration_rows", [[], [{
+    "logical_source_id": "costanzo-physiology",
+    "staging_version": 4,
+    "state": "partial",
+    "legacy_fallback_disabled": False,
+}]])
+def test_readiness_blocks_promoted_links_without_active_current_migration(migration_rows):
+    tables = base_tables()
+    tables["mls_source_map_evidence_status"] = migration_rows
+
+    result = _readiness(Client(tables, ready_rpc()), "costanzo-physiology")
+
+    assert result["evidence_blocks"] == 1
+    assert result["source_map_evidence_status"] is None
+    assert result["ready"] is False
+    assert "no_exact_source_map_evidence" in result["blockers"]
+
+
+def test_readiness_accepts_complete_current_migration():
+    tables = base_tables()
+    tables["mls_source_map_evidence_status"][0]["state"] = "complete"
+
+    result = _readiness(Client(tables, ready_rpc()), "costanzo-physiology")
+
+    assert result["ready"] is True
+    assert result["blockers"] == []
+
+
+@pytest.mark.parametrize("changed_path", [
+    "src/medical_learning_system/hoc90/runtime_service.py",
+    "src/medical_learning_system/supabase_storage.py",
+])
+def test_readiness_workflow_runs_when_canonical_readiness_dependencies_change(changed_path):
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github/workflows/hoc90-deeptutor-runtime-readiness.yml"
+    )
+    workflow = yaml.load(workflow_path.read_text(), Loader=yaml.BaseLoader)
+    assert any(fnmatchcase(changed_path, pattern) for pattern in workflow["on"]["push"]["paths"])
 
 
 def test_readiness_requires_current_stage_promoted_evidence():

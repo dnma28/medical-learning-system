@@ -435,8 +435,18 @@ def check_hoc90_readiness(
     ):
         blockers.append("source_map_not_ready_for_hoc90")
 
-    if logical_source_id and evidence_migration_history and evidence_status is None:
-        blockers.append("source_map_evidence_stale")
+    if (
+        logical_source_id
+        and (current_stage is not None or evidence_migration_history)
+        and evidence_status is None
+    ):
+        # Match the resolver: promoted links alone cannot activate a book whose
+        # current immutable stage has no active versioned evidence migration.
+        blockers.append(
+            "source_map_evidence_stale"
+            if evidence_migration_history
+            else "no_exact_source_map_evidence"
+        )
     elif evidence_status and evidence_status.get("state") == "review_required":
         blockers.append("source_map_evidence_review_required")
     elif evidence_status and evidence_status.get("state") == "stale":
